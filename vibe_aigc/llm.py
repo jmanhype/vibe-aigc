@@ -2,11 +2,25 @@
 
 import asyncio
 import json
+import os
 from typing import Any, Dict, Optional
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from .models import Vibe, WorkflowPlan
+
+
+def _load_dotenv():
+    """Load .env file if python-dotenv is available."""
+    try:
+        from dotenv import load_dotenv
+        # Try vibe-aigc root, then workspace root
+        for path in [".env", "../.env"]:
+            if os.path.exists(path):
+                load_dotenv(path)
+                break
+    except ImportError:
+        pass
 
 
 class LLMConfig(BaseModel):
@@ -17,24 +31,43 @@ class LLMConfig(BaseModel):
     max_tokens: int = 2000
     api_key: Optional[str] = None
     base_url: Optional[str] = None  # Custom endpoint (e.g., z.ai, local models)
+    
+    @classmethod
+    def from_env(cls) -> "LLMConfig":
+        """Create config from environment variables."""
+        _load_dotenv()
+        return cls(
+            model=os.getenv("OPENAI_MODEL", "gpt-4"),
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_BASE_URL"),
+        )
 
 
 class LLMClient:
     """Async client for LLM-based Vibe decomposition."""
 
     def __init__(self, config: Optional[LLMConfig] = None):
-        self.config = config or LLMConfig()
+        # Load from env if no config provided
+        if config is None:
+            config = LLMConfig.from_env()
+        self.config = config
+        
         try:
-            client_kwargs = {"api_key": self.config.api_key}
+            client_kwargs = {}
+            # Only pass api_key if explicitly set (let OpenAI client check env otherwise)
+            if self.config.api_key:
+                client_kwargs["api_key"] = self.config.api_key
             if self.config.base_url:
                 client_kwargs["base_url"] = self.config.base_url
             self.client = AsyncOpenAI(**client_kwargs)
         except Exception as e:
             if "api_key" in str(e).lower():
                 raise RuntimeError(
-                    "OpenAI API key is required. Please set the OPENAI_API_KEY environment "
-                    "variable or pass an api_key to LLMConfig. "
-                    "Get your API key from: https://platform.openai.com/api-keys"
+                    "OpenAI API key is required. Set OPENAI_API_KEY environment variable "
+                    "or create a .env file. For z.ai, also set OPENAI_BASE_URL. "
+                    "Example .env:\n"
+                    "  OPENAI_API_KEY=your-key\n"
+                    "  OPENAI_BASE_URL=https://api.z.ai/v1"
                 ) from e
             raise
 
