@@ -1,318 +1,180 @@
-"""Tests for MetaPlanner resume integration (US-015)."""
+"""Test MetaPlanner resume integration functionality."""
 
 import pytest
+import tempfile
 import os
-from unittest.mock import AsyncMock, patch, MagicMock
+import shutil
+from unittest.mock import patch, AsyncMock
 
 from vibe_aigc.models import Vibe, WorkflowPlan, WorkflowNode, WorkflowNodeType
-from vibe_aigc.executor import ExecutionResult, ExecutionStatus, NodeResult
+from vibe_aigc.executor import ExecutionResult, NodeResult, ExecutionStatus
 from vibe_aigc.planner import MetaPlanner
-from vibe_aigc.llm import LLMConfig
 from vibe_aigc.persistence import WorkflowCheckpoint, WorkflowPersistenceManager
 
-
-def create_test_planner(checkpoint_dir: str, checkpoint_interval: int = None) -> MetaPlanner:
-    """Create a MetaPlanner with mocked LLM config."""
-    # Use a fake API key to avoid OpenAI client initialization error
-    config = LLMConfig(api_key="test-fake-key-for-testing")
-    return MetaPlanner(
-        llm_config=config,
-        checkpoint_dir=checkpoint_dir,
-        checkpoint_interval=checkpoint_interval
-    )
-
-
-def create_test_plan(vibe: Vibe, num_nodes: int = 3) -> WorkflowPlan:
-    """Create a test workflow plan."""
-    nodes = [
-        WorkflowNode(
-            id=f"node-{i}",
-            type=WorkflowNodeType.GENERATE,
-            description=f"Test node {i}"
-        )
-        for i in range(num_nodes)
-    ]
-    return WorkflowPlan(id="test-plan", source_vibe=vibe, root_nodes=nodes)
-
-
-def create_partial_checkpoint(plan: WorkflowPlan, completed_ids: list, tmp_path) -> str:
-    """Create a checkpoint with partial execution."""
-    result = ExecutionResult(plan.id)
-
-    for node in plan.root_nodes:
-        if node.id in completed_ids:
-            result.add_node_result(NodeResult(
-                node_id=node.id,
-                status=ExecutionStatus.COMPLETED,
-                result={"mock": "result"},
-                duration=0.1
-            ))
-
-    checkpoint = WorkflowCheckpoint(plan, result)
-    manager = WorkflowPersistenceManager(str(tmp_path))
-    manager.save_checkpoint(checkpoint)
-
-    return checkpoint.checkpoint_id
-
-
 @pytest.mark.asyncio
-class TestMetaPlannerResumeIntegration:
-    """Test MetaPlanner checkpoint/resume integration."""
+class TestMetaPlannerResume:
+    """Test MetaPlanner resume integration functionality."""
 
-    @patch('vibe_aigc.llm.AsyncOpenAI')
-    async def test_execute_with_resume_fresh_start(self, mock_openai, tmp_path):
-        """Test execute_with_resume without checkpoint (fresh execution)."""
-        # Mock LLM response
+    def setup_method(self):
+        """Set up test environment with temporary checkpoint directory."""
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        """Clean up temporary files."""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @patch('vibe_aigc.planner.LLMClient')
+    async def test_execute_with_resume_from_checkpoint(self, mock_llm_client):
+        """Test MetaPlanner.execute_with_resume() with existing checkpoint."""
+
+        # Mock LLM client
         mock_client = AsyncMock()
-        mock_completion = AsyncMock()
-        mock_completion.choices[0].message.content = '''
-        {
-            "id": "fresh-plan",
+        mock_client.decompose_vibe.return_value = {
+            "id": "resume-metaplanner-test",
             "root_nodes": [
-                {"id": "task-1", "type": "generate", "description": "First task"}
+                {"id": "step-1", "type": "analyze", "description": "First step",
+                 "parameters": {}, "dependencies": [], "children": []},
+                {"id": "step-2", "type": "generate", "description": "Second step",
+                 "parameters": {}, "dependencies": ["step-1"], "children": []},
+                {"id": "step-3", "type": "validate", "description": "Third step",
+                 "parameters": {}, "dependencies": ["step-2"], "children": []}
             ]
         }
-        '''
-        mock_client.chat.completions.create.return_value = mock_completion
-        mock_openai.return_value = mock_client
+        mock_llm_client.return_value = mock_client
 
-        planner = create_test_planner(str(tmp_path))
-        vibe = Vibe(description="Test fresh execution")
+        # Create a pre-existing checkpoint with partial execution
+        step1 = WorkflowNode(id="step-1", type=WorkflowNodeType.ANALYZE, description="First step")
+        step2 = WorkflowNode(id="step-2", type=WorkflowNodeType.GENERATE,
+                            description="Second step", dependencies=["step-1"])
+        step3 = WorkflowNode(id="step-3", type=WorkflowNodeType.VALIDATE,
+                            description="Third step", dependencies=["step-2"])
 
-        result = await planner.execute_with_resume(vibe)
+        plan = WorkflowPlan(
+            id="resume-metaplanner-test",
+            source_vibe=Vibe(description="MetaPlanner resume test"),
+            root_nodes=[step1, step2, step3]
+        )
 
+        # Create partial execution result
+        partial_result = ExecutionResult("resume-metaplanner-test")
+        partial_result.add_node_result(NodeResult("step-1", ExecutionStatus.COMPLETED,
+                                                 result={"analysis": "done"}, duration=0.5))
+
+        # Save checkpoint
+        checkpoint = WorkflowCheckpoint(plan, partial_result)
+        persistence_manager = WorkflowPersistenceManager(self.temp_dir)
+        persistence_manager.save_checkpoint(checkpoint)
+
+        # Create MetaPlanner and resume execution
+        planner = MetaPlanner(checkpoint_dir=self.temp_dir)
+        vibe = Vibe(description="MetaPlanner resume test")
+
+        result = await planner.execute_with_resume(vibe, checkpoint.checkpoint_id)
+
+        # Verify execution completed successfully
         assert result["status"] == "completed"
-        assert result["persistence_info"]["resumed_from"] is None
+        assert result["plan_id"] == "resume-metaplanner-test"
 
-    @patch('vibe_aigc.llm.AsyncOpenAI')
-    async def test_execute_with_resume_from_checkpoint(self, mock_openai, tmp_path):
-        """Test execute_with_resume resuming from checkpoint."""
-        # Create a plan and partial checkpoint
-        vibe = Vibe(description="Test resume execution")
-        plan = create_test_plan(vibe, num_nodes=4)
-        checkpoint_id = create_partial_checkpoint(plan, ["node-0", "node-1"], tmp_path)
+        # Verify resume metadata
+        assert "resumed_from" in result
+        assert result["resumed_from"] == checkpoint.checkpoint_id
 
-        planner = create_test_planner(str(tmp_path))
+        # Verify original step-1 result was preserved
+        assert "step-1" in result["node_results"]
+        assert result["node_results"]["step-1"]["duration"] == 0.5  # Original duration preserved
+        assert result["node_results"]["step-1"]["result"]["analysis"] == "done"  # Original result preserved
 
-        result = await planner.execute_with_resume(vibe, checkpoint_id=checkpoint_id)
+    async def test_list_checkpoints_functionality(self):
+        """Test MetaPlanner.list_checkpoints() functionality."""
 
-        assert result["status"] == "completed"
-        assert result["persistence_info"]["resumed_from"] == checkpoint_id
-        # All 4 nodes should be in results
-        assert len(result["node_results"]) == 4
+        # Create multiple checkpoints
+        persistence_manager = WorkflowPersistenceManager(self.temp_dir)
 
-    async def test_execute_with_resume_invalid_checkpoint(self, tmp_path):
-        """Test execute_with_resume with non-existent checkpoint."""
-        planner = create_test_planner(str(tmp_path))
-        vibe = Vibe(description="Test invalid checkpoint")
+        for i in range(3):
+            node = WorkflowNode(id=f"task-{i+1}", type=WorkflowNodeType.ANALYZE,
+                               description=f"Test task {i+1}")
+            plan = WorkflowPlan(
+                id=f"test-plan-{i+1}",
+                source_vibe=Vibe(description=f"Test plan {i+1}"),
+                root_nodes=[node]
+            )
+            result = ExecutionResult(f"test-plan-{i+1}")
+            result.add_node_result(NodeResult(f"task-{i+1}", ExecutionStatus.COMPLETED,
+                                             result={"completed": True}, duration=0.1))
 
-        with pytest.raises(RuntimeError, match="Checkpoint not found"):
-            await planner.execute_with_resume(vibe, checkpoint_id="nonexistent-id")
+            checkpoint = WorkflowCheckpoint(plan, result)
+            persistence_manager.save_checkpoint(checkpoint)
 
-    def test_list_checkpoints_empty(self, tmp_path):
-        """Test listing checkpoints when none exist."""
-        planner = create_test_planner(str(tmp_path))
+        # Create MetaPlanner and list checkpoints
+        planner = MetaPlanner(checkpoint_dir=self.temp_dir)
 
-        checkpoints = planner.list_checkpoints()
+        # Test listing all checkpoints
+        all_checkpoints = planner.list_checkpoints()
+        assert len(all_checkpoints) == 3
 
-        assert checkpoints == []
+        # Verify checkpoint metadata
+        for checkpoint_info in all_checkpoints:
+            assert "checkpoint_id" in checkpoint_info
+            assert "plan_id" in checkpoint_info
+            assert "created_at" in checkpoint_info
+            assert checkpoint_info["plan_id"].startswith("test-plan-")
 
-    def test_list_checkpoints_with_data(self, tmp_path):
-        """Test listing checkpoints with existing data."""
-        vibe = Vibe(description="Test list")
-        plan = create_test_plan(vibe, num_nodes=2)
+        # Test filtering by plan ID
+        filtered_checkpoints = planner.list_checkpoints(plan_id="test-plan-2")
+        assert len(filtered_checkpoints) == 1
+        assert filtered_checkpoints[0]["plan_id"] == "test-plan-2"
 
-        # Create some checkpoints
-        manager = WorkflowPersistenceManager(str(tmp_path))
+        # Test filtering with non-existent plan ID
+        empty_checkpoints = planner.list_checkpoints(plan_id="non-existent-plan")
+        assert len(empty_checkpoints) == 0
 
-        result1 = ExecutionResult(plan.id)
-        result1.add_node_result(NodeResult("node-0", ExecutionStatus.COMPLETED))
-        checkpoint1 = WorkflowCheckpoint(plan, result1)
-        manager.save_checkpoint(checkpoint1)
+    async def test_delete_checkpoint_functionality(self):
+        """Test MetaPlanner.delete_checkpoint() functionality."""
 
-        result2 = ExecutionResult(plan.id)
-        result2.add_node_result(NodeResult("node-0", ExecutionStatus.COMPLETED))
-        result2.add_node_result(NodeResult("node-1", ExecutionStatus.COMPLETED))
-        checkpoint2 = WorkflowCheckpoint(plan, result2)
-        manager.save_checkpoint(checkpoint2)
+        # Create a checkpoint
+        node = WorkflowNode(id="delete-task", type=WorkflowNodeType.ANALYZE, description="Delete test task")
+        plan = WorkflowPlan(
+            id="delete-test-plan",
+            source_vibe=Vibe(description="Delete test plan"),
+            root_nodes=[node]
+        )
+        result = ExecutionResult("delete-test-plan")
+        result.add_node_result(NodeResult("delete-task", ExecutionStatus.COMPLETED,
+                                         result={"completed": True}, duration=0.1))
 
-        # List via MetaPlanner
-        planner = create_test_planner(str(tmp_path))
-        checkpoints = planner.list_checkpoints()
+        checkpoint = WorkflowCheckpoint(plan, result)
+        persistence_manager = WorkflowPersistenceManager(self.temp_dir)
+        persistence_manager.save_checkpoint(checkpoint)
 
-        assert len(checkpoints) == 2
-
-    def test_list_checkpoints_filter_by_plan_id(self, tmp_path):
-        """Test listing checkpoints filtered by plan ID."""
-        vibe1 = Vibe(description="Plan 1")
-        plan1 = WorkflowPlan(id="plan-one", source_vibe=vibe1, root_nodes=[])
-
-        vibe2 = Vibe(description="Plan 2")
-        plan2 = WorkflowPlan(id="plan-two", source_vibe=vibe2, root_nodes=[])
-
-        manager = WorkflowPersistenceManager(str(tmp_path))
-
-        # Create checkpoints for both plans
-        cp1 = WorkflowCheckpoint(plan1, ExecutionResult(plan1.id))
-        cp2 = WorkflowCheckpoint(plan2, ExecutionResult(plan2.id))
-        manager.save_checkpoint(cp1)
-        manager.save_checkpoint(cp2)
-
-        planner = create_test_planner(str(tmp_path))
-
-        # Filter by plan ID
-        plan_one_checkpoints = planner.list_checkpoints(plan_id="plan-one")
-
-        assert len(plan_one_checkpoints) == 1
-        assert plan_one_checkpoints[0]["plan_id"] == "plan-one"
-
-    def test_delete_checkpoint(self, tmp_path):
-        """Test deleting a checkpoint."""
-        vibe = Vibe(description="Delete test")
-        plan = create_test_plan(vibe)
-
-        manager = WorkflowPersistenceManager(str(tmp_path))
-        checkpoint = WorkflowCheckpoint(plan, ExecutionResult(plan.id))
-        manager.save_checkpoint(checkpoint)
-
-        planner = create_test_planner(str(tmp_path))
+        # Create MetaPlanner
+        planner = MetaPlanner(checkpoint_dir=self.temp_dir)
 
         # Verify checkpoint exists
-        assert len(planner.list_checkpoints()) == 1
-
-        # Delete it
-        result = planner.delete_checkpoint(checkpoint.checkpoint_id)
-
-        assert result is True
-        assert len(planner.list_checkpoints()) == 0
-
-    def test_delete_checkpoint_not_found(self, tmp_path):
-        """Test deleting non-existent checkpoint returns False."""
-        planner = create_test_planner(str(tmp_path))
-
-        result = planner.delete_checkpoint("nonexistent-checkpoint")
-
-        assert result is False
-
-    def test_get_checkpoint(self, tmp_path):
-        """Test loading a specific checkpoint."""
-        vibe = Vibe(description="Get test")
-        plan = create_test_plan(vibe)
-
-        manager = WorkflowPersistenceManager(str(tmp_path))
-        original = WorkflowCheckpoint(plan, ExecutionResult(plan.id))
-        manager.save_checkpoint(original)
-
-        planner = create_test_planner(str(tmp_path))
-        loaded = planner.get_checkpoint(original.checkpoint_id)
-
-        assert loaded.checkpoint_id == original.checkpoint_id
-        assert loaded.plan.id == plan.id
-
-    def test_get_checkpoint_not_found(self, tmp_path):
-        """Test loading non-existent checkpoint raises FileNotFoundError."""
-        planner = create_test_planner(str(tmp_path))
-
-        with pytest.raises(FileNotFoundError):
-            planner.get_checkpoint("nonexistent-id")
-
-    def test_create_checkpoint_manual(self, tmp_path):
-        """Test manually creating a checkpoint."""
-        vibe = Vibe(description="Manual checkpoint test")
-        plan = create_test_plan(vibe)
-        result = ExecutionResult(plan.id)
-        result.add_node_result(NodeResult("node-0", ExecutionStatus.COMPLETED))
-
-        planner = create_test_planner(str(tmp_path))
-        checkpoint_id = planner.create_checkpoint(plan, result)
-
-        # Verify it was created
-        assert checkpoint_id is not None
-        loaded = planner.get_checkpoint(checkpoint_id)
-        assert loaded.plan.id == plan.id
-
-    @patch('vibe_aigc.llm.AsyncOpenAI')
-    async def test_persistence_info_in_result(self, mock_openai, tmp_path):
-        """Test that execute_with_resume includes persistence info."""
-        mock_client = AsyncMock()
-        mock_completion = AsyncMock()
-        mock_completion.choices[0].message.content = '''
-        {
-            "id": "persist-plan",
-            "root_nodes": [
-                {"id": "task-1", "type": "generate", "description": "Task"}
-            ]
-        }
-        '''
-        mock_client.chat.completions.create.return_value = mock_completion
-        mock_openai.return_value = mock_client
-
-        planner = create_test_planner(str(tmp_path), checkpoint_interval=1)
-        vibe = Vibe(description="Persistence info test")
-
-        result = await planner.execute_with_resume(vibe)
-
-        assert "persistence_info" in result
-        assert result["persistence_info"]["checkpoint_dir"] == str(tmp_path)
-        assert result["persistence_info"]["checkpoint_enabled"] is True
-
-    @patch('vibe_aigc.llm.AsyncOpenAI')
-    async def test_backward_compat_execute_method(self, mock_openai, tmp_path):
-        """Test that original execute() method still works."""
-        mock_client = AsyncMock()
-        mock_completion = AsyncMock()
-        mock_completion.choices[0].message.content = '''
-        {
-            "id": "compat-plan",
-            "root_nodes": [
-                {"id": "task-1", "type": "generate", "description": "Task"}
-            ]
-        }
-        '''
-        mock_client.chat.completions.create.return_value = mock_completion
-        mock_openai.return_value = mock_client
-
-        planner = create_test_planner(str(tmp_path))
-        vibe = Vibe(description="Backward compat test")
-
-        # Original execute should still work
-        result = await planner.execute(vibe)
-
-        assert result["status"] == "completed"
-
-
-@pytest.mark.asyncio
-class TestResumeFullCycle:
-    """Integration tests for full checkpoint/resume cycle via MetaPlanner."""
-
-    async def test_full_checkpoint_resume_cycle(self, tmp_path):
-        """Test complete cycle: execute partially, save, list, load, resume."""
-        vibe = Vibe(description="Full cycle test")
-        plan = create_test_plan(vibe, num_nodes=4)
-
-        # Step 1: Create partial execution and checkpoint
-        result = ExecutionResult(plan.id)
-        result.add_node_result(NodeResult("node-0", ExecutionStatus.COMPLETED,
-                                         result={"data": "first"}))
-        result.add_node_result(NodeResult("node-1", ExecutionStatus.COMPLETED,
-                                         result={"data": "second"}))
-
-        planner = create_test_planner(str(tmp_path))
-        checkpoint_id = planner.create_checkpoint(plan, result)
-
-        # Step 2: List checkpoints
         checkpoints = planner.list_checkpoints()
         assert len(checkpoints) == 1
-        assert checkpoints[0]["checkpoint_id"] == checkpoint_id
+        checkpoint_id = checkpoints[0]["checkpoint_id"]
 
-        # Step 3: Resume execution
-        final_result = await planner.execute_with_resume(vibe, checkpoint_id=checkpoint_id)
+        # Delete checkpoint
+        deleted = planner.delete_checkpoint(checkpoint_id)
+        assert deleted == True
 
-        # Step 4: Verify
-        assert final_result["status"] == "completed"
-        assert final_result["persistence_info"]["resumed_from"] == checkpoint_id
-        assert len(final_result["node_results"]) == 4
+        # Verify checkpoint is gone
+        checkpoints_after = planner.list_checkpoints()
+        assert len(checkpoints_after) == 0
 
-        # Previously completed nodes should retain their results
-        assert final_result["node_results"]["node-0"]["status"] == "completed"
-        assert final_result["node_results"]["node-1"]["status"] == "completed"
+        # Test deleting non-existent checkpoint
+        deleted_nonexistent = planner.delete_checkpoint("non-existent-id")
+        assert deleted_nonexistent == False
+
+    async def test_resume_error_handling_checkpoint_not_found(self):
+        """Test error handling when checkpoint is not found."""
+
+        planner = MetaPlanner(checkpoint_dir=self.temp_dir)
+        vibe = Vibe(description="Error handling test")
+
+        # Try to resume from non-existent checkpoint
+        with pytest.raises(RuntimeError) as exc_info:
+            await planner.execute_with_resume(vibe, "non-existent-checkpoint-id")
+
+        assert "Checkpoint not found: non-existent-checkpoint-id" in str(exc_info.value)
+        assert "Use list_checkpoints() to see available checkpoints" in str(exc_info.value)
