@@ -135,9 +135,18 @@ class ExecutionResult:
 
 
 class WorkflowExecutor:
-    """Basic execution engine for WorkflowPlans with progress callbacks."""
+    """Basic execution engine for WorkflowPlans with progress callbacks and checkpointing."""
 
-    def __init__(self, progress_callback: Optional[Callable[[ProgressEvent], None]] = None):
+    def __init__(self, progress_callback: Optional[Callable[[ProgressEvent], None]] = None,
+                 checkpoint_interval: Optional[int] = None,
+                 checkpoint_dir: str = ".vibe_checkpoints"):
+        """Initialize executor.
+
+        Args:
+            progress_callback: Optional callback for progress events
+            checkpoint_interval: Create checkpoint every N completed nodes (None = disabled)
+            checkpoint_dir: Directory for checkpoint storage
+        """
         self.node_handlers = {
             WorkflowNodeType.ANALYZE: self._execute_analyze,
             WorkflowNodeType.GENERATE: self._execute_generate,
@@ -146,6 +155,11 @@ class WorkflowExecutor:
             WorkflowNodeType.COMPOSITE: self._execute_composite
         }
         self.progress_callback = progress_callback
+        self.checkpoint_interval = checkpoint_interval
+        self.checkpoint_dir = checkpoint_dir
+        self._checkpoint_counter = 0
+        self._last_checkpoint_id: Optional[str] = None
+        self._current_plan: Optional[WorkflowPlan] = None
 
     async def execute_plan(self, plan: WorkflowPlan,
                           resume_from_checkpoint: Optional['WorkflowCheckpoint'] = None) -> ExecutionResult:
@@ -159,6 +173,10 @@ class WorkflowExecutor:
         Returns:
             ExecutionResult with combined results from checkpoint and new execution
         """
+        # Store plan reference for checkpointing
+        self._current_plan = plan
+        self._checkpoint_counter = 0
+
         # Initialize result - either from checkpoint or fresh
         if resume_from_checkpoint:
             result = resume_from_checkpoint.execution_result
@@ -246,7 +264,45 @@ class WorkflowExecutor:
         result.total_duration = time.time() - start_time
         result.parallel_efficiency = result.calculate_parallel_efficiency()
 
+        # Create final checkpoint on completion or failure
+        if self.checkpoint_interval is not None:
+            self._create_checkpoint(plan, result)
+
         return result
+
+    def _create_checkpoint(self, plan: WorkflowPlan, result: ExecutionResult) -> Optional[str]:
+        """Create a checkpoint of current execution state.
+
+        Returns the checkpoint ID if successful, None otherwise.
+        """
+        try:
+            from .persistence import WorkflowCheckpoint, WorkflowPersistenceManager
+
+            checkpoint = WorkflowCheckpoint(plan, result)
+            manager = WorkflowPersistenceManager(self.checkpoint_dir)
+            manager.save_checkpoint(checkpoint)
+            self._last_checkpoint_id = checkpoint.checkpoint_id
+            return checkpoint.checkpoint_id
+        except Exception as e:
+            # Checkpoint failures shouldn't interrupt execution
+            self._emit_progress(ProgressEventType.NODE_FAILED,
+                              message=f"Checkpoint creation failed: {e}")
+            return None
+
+    def _maybe_checkpoint(self, plan: WorkflowPlan, result: ExecutionResult):
+        """Create checkpoint if interval threshold is met."""
+        if self.checkpoint_interval is None:
+            return
+
+        self._checkpoint_counter += 1
+        if self._checkpoint_counter >= self.checkpoint_interval:
+            self._create_checkpoint(plan, result)
+            self._checkpoint_counter = 0
+
+    @property
+    def last_checkpoint_id(self) -> Optional[str]:
+        """Get the ID of the most recently created checkpoint."""
+        return self._last_checkpoint_id
 
 
     def _dependencies_satisfied(self, node: WorkflowNode, result: ExecutionResult) -> bool:
@@ -433,6 +489,10 @@ class WorkflowExecutor:
                     "reason": feedback.get("replan_reason", "low_quality_output"),
                     "suggested_changes": feedback.get("optimization_suggestions", [])
                 })
+
+            # Create checkpoint if interval reached
+            if self._current_plan:
+                self._maybe_checkpoint(self._current_plan, result)
 
             # Execute children with progress tracking
             if node.children:

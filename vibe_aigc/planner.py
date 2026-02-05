@@ -8,17 +8,31 @@ from .models import Vibe, WorkflowPlan, WorkflowNode, WorkflowNodeType
 from .llm import LLMClient, LLMConfig
 from .executor import WorkflowExecutor, ExecutionResult, ExecutionStatus, ProgressEvent
 from .visualization import WorkflowVisualizer, VisualizationFormat
+from .persistence import WorkflowCheckpoint, WorkflowPersistenceManager
 
 
 class MetaPlanner:
     """Central system architect that decomposes Vibes into executable workflows with adaptive capabilities."""
 
-    def __init__(self, llm_config: Optional[LLMConfig] = None, progress_callback: Optional[Callable[[ProgressEvent], None]] = None):
+    def __init__(self, llm_config: Optional[LLMConfig] = None,
+                 progress_callback: Optional[Callable[[ProgressEvent], None]] = None,
+                 checkpoint_interval: Optional[int] = None,
+                 checkpoint_dir: str = ".vibe_checkpoints"):
+        """Initialize MetaPlanner.
+
+        Args:
+            llm_config: Configuration for LLM client
+            progress_callback: Optional callback for progress events
+            checkpoint_interval: Create checkpoint every N completed nodes (None = disabled)
+            checkpoint_dir: Directory for checkpoint storage
+        """
         self.llm_client = LLMClient(llm_config)
-        self.executor = WorkflowExecutor(progress_callback)
+        self.executor = WorkflowExecutor(progress_callback, checkpoint_interval, checkpoint_dir)
         self.max_replan_attempts = 3  # New configuration
         self.replan_history: List[Dict[str, Any]] = []  # New field for tracking adaptation history
         self.progress_callback = progress_callback
+        self.checkpoint_dir = checkpoint_dir
+        self._persistence_manager = WorkflowPersistenceManager(checkpoint_dir)
 
     async def plan(self, vibe: Vibe) -> WorkflowPlan:
         """Generate a WorkflowPlan from a Vibe using LLM decomposition."""
@@ -416,3 +430,165 @@ class MetaPlanner:
             base_result["execution_groups"] = execution_result.execution_groups
 
         return base_result
+
+    # ================== Checkpoint/Resume Methods (US-015) ==================
+
+    async def execute_with_resume(self, vibe: Vibe,
+                                  checkpoint_id: Optional[str] = None) -> Dict[str, Any]:
+        """Execute vibe with checkpoint-based resume support.
+
+        Args:
+            vibe: The Vibe to execute
+            checkpoint_id: Optional checkpoint ID to resume from. If provided,
+                          execution continues from that checkpoint's state.
+
+        Returns:
+            Result dict including checkpoint metadata and persistence info
+        """
+        checkpoint = None
+        plan = None
+
+        if checkpoint_id:
+            try:
+                checkpoint = self._persistence_manager.load_checkpoint(checkpoint_id)
+                plan = checkpoint.plan
+                self._emit_progress_message(
+                    f"Resuming from checkpoint {checkpoint_id}"
+                )
+            except FileNotFoundError:
+                raise RuntimeError(
+                    f"Checkpoint not found: {checkpoint_id}. "
+                    f"Use list_checkpoints() to see available checkpoints."
+                )
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to load checkpoint {checkpoint_id}: {e}"
+                ) from e
+
+        # Generate plan if not resuming
+        if plan is None:
+            plan = await self.plan(vibe)
+
+        try:
+            # Execute with optional resume
+            execution_result = await self.executor.execute_plan(plan, checkpoint)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to execute workflow plan '{plan.id}': {e}"
+            ) from e
+
+        # Format result with persistence metadata
+        return self._format_resume_result(execution_result, plan, checkpoint_id)
+
+    def list_checkpoints(self, plan_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List available checkpoints with metadata.
+
+        Args:
+            plan_id: Optional filter by plan ID
+
+        Returns:
+            List of checkpoint metadata dicts
+        """
+        checkpoints = self._persistence_manager.list_checkpoints()
+
+        if plan_id:
+            checkpoints = [cp for cp in checkpoints if cp.get("plan_id") == plan_id]
+
+        return checkpoints
+
+    def delete_checkpoint(self, checkpoint_id: str) -> bool:
+        """Delete a checkpoint.
+
+        Args:
+            checkpoint_id: ID of checkpoint to delete
+
+        Returns:
+            True if deleted, False if not found
+
+        Raises:
+            RuntimeError: If deletion fails for other reasons
+        """
+        try:
+            return self._persistence_manager.delete_checkpoint(checkpoint_id)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to delete checkpoint {checkpoint_id}: {e}"
+            ) from e
+
+    def get_checkpoint(self, checkpoint_id: str) -> WorkflowCheckpoint:
+        """Load a specific checkpoint.
+
+        Args:
+            checkpoint_id: ID of checkpoint to load
+
+        Returns:
+            WorkflowCheckpoint instance
+
+        Raises:
+            FileNotFoundError: If checkpoint doesn't exist
+            RuntimeError: If loading fails
+        """
+        try:
+            return self._persistence_manager.load_checkpoint(checkpoint_id)
+        except FileNotFoundError:
+            raise
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load checkpoint {checkpoint_id}: {e}"
+            ) from e
+
+    def create_checkpoint(self, plan: WorkflowPlan,
+                         execution_result: ExecutionResult) -> str:
+        """Manually create a checkpoint.
+
+        Args:
+            plan: The workflow plan
+            execution_result: Current execution state
+
+        Returns:
+            Checkpoint ID
+        """
+        checkpoint = WorkflowCheckpoint(plan, execution_result)
+        self._persistence_manager.save_checkpoint(checkpoint)
+        return checkpoint.checkpoint_id
+
+    def _format_resume_result(self, execution_result: ExecutionResult,
+                             plan: WorkflowPlan,
+                             resumed_from: Optional[str] = None) -> Dict[str, Any]:
+        """Format result with resume/persistence metadata."""
+        base_result = {
+            "status": execution_result.status.value,
+            "plan_id": execution_result.plan_id,
+            "vibe_description": plan.source_vibe.description,
+            "execution_summary": execution_result.get_summary(),
+            "node_results": {
+                node_id: {
+                    "status": result.status.value,
+                    "result": result.result,
+                    "error": result.error,
+                    "duration": result.duration
+                }
+                for node_id, result in execution_result.node_results.items()
+            },
+            "persistence_info": {
+                "checkpoint_dir": self.checkpoint_dir,
+                "last_checkpoint_id": self.executor.last_checkpoint_id,
+                "resumed_from": resumed_from,
+                "checkpoint_enabled": self.executor.checkpoint_interval is not None
+            }
+        }
+
+        return base_result
+
+    def _emit_progress_message(self, message: str):
+        """Emit a progress message if callback is configured."""
+        if self.progress_callback:
+            from .executor import ProgressEvent, ProgressEventType
+            event = ProgressEvent(
+                ProgressEventType.WORKFLOW_STARTED,
+                message=message
+            )
+            try:
+                self.progress_callback(event)
+            except Exception:
+                pass  # Don't let callback errors interrupt execution
