@@ -207,6 +207,94 @@ Focus on actionable improvements."""
                 "raw_response": response.text
             }
     
+    def analyze_video(self, video_path: Path, context: str = "") -> Dict[str, Any]:
+        """Use Gemini VLM to analyze a video file."""
+        if not self.vlm or not HAS_GENAI:
+            return {"error": "VLM not available"}
+        
+        # Upload video to Gemini
+        try:
+            video_file = genai.upload_file(str(video_path))
+            
+            # Wait for processing
+            import time
+            while video_file.state.name == "PROCESSING":
+                time.sleep(2)
+                video_file = genai.get_file(video_file.name)
+            
+            if video_file.state.name == "FAILED":
+                return {"error": f"Video processing failed: {video_file.state.name}"}
+            
+            prompt = f"""You are an AI video director analyzing AI-generated video.
+
+Context: {context}
+
+Analyze this video and respond in JSON format:
+{{
+    "quality_score": <1-10>,
+    "description": "<what happens in the video>",
+    "motion_quality": "<smooth/jerky/static>",
+    "temporal_consistency": "<consistent/flickering/morphing>",
+    "strengths": ["<strength1>", "<strength2>"],
+    "weaknesses": ["<weakness1>", "<weakness2>"],
+    "prompt_improvements": ["<specific prompt addition>", ...],
+    "parameter_changes": {{
+        "steps": <suggested steps or null>,
+        "cfg": <suggested cfg or null>,
+        "motion_scale": <suggested motion scale 0.5-1.5 or null>,
+        "frame_count": <suggested frames or null>
+    }}
+}}
+
+Focus on:
+- Motion quality and smoothness
+- Temporal consistency (do objects morph/flicker?)
+- Subject coherence across frames
+- Overall visual quality
+Be specific about improvements."""
+
+            response = self.vlm.generate_content([prompt, video_file])
+            
+            # Clean up uploaded file
+            try:
+                genai.delete_file(video_file.name)
+            except:
+                pass
+            
+            # Parse JSON from response
+            text = response.text
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0]
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0]
+            return json.loads(text.strip())
+            
+        except Exception as e:
+            return {
+                "quality_score": 5,
+                "error": str(e),
+                "description": f"Video analysis failed: {e}"
+            }
+    
+    def analyze_media(self, media_path: Path, context: str = "") -> Dict[str, Any]:
+        """Analyze any media file (image or video)."""
+        suffix = media_path.suffix.lower()
+        
+        if suffix in ['.mp4', '.webm', '.gif', '.webp', '.mov', '.avi']:
+            # Check if it's actually animated (for webp/gif)
+            if suffix in ['.webp', '.gif']:
+                try:
+                    img = Image.open(media_path)
+                    if getattr(img, 'n_frames', 1) > 1:
+                        return self.analyze_video(media_path, context)
+                    else:
+                        return self.analyze_image(media_path, context)
+                except:
+                    pass
+            return self.analyze_video(media_path, context)
+        else:
+            return self.analyze_image(media_path, context)
+    
     # Valid ComfyUI sampler names
     VALID_SAMPLERS = [
         "euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral",
@@ -258,6 +346,33 @@ Focus on actionable improvements."""
                 # Always change seed for variation
                 node["inputs"]["seed"] = node["inputs"].get("seed", 0) + 1
         
+        # Handle video-specific nodes
+        for node_id, node in modified.items():
+            # LTX Video scheduler
+            if node.get("class_type") == "LTXVScheduler":
+                if param_changes.get("steps"):
+                    node["inputs"]["steps"] = min(param_changes["steps"], 30)
+            
+            # LTX Video latent (frame count)
+            if node.get("class_type") == "EmptyLTXVLatentVideo":
+                if param_changes.get("frame_count"):
+                    # Ensure valid frame count (must work with model)
+                    frames = param_changes["frame_count"]
+                    # LTX works best with specific frame counts
+                    valid_frames = [9, 17, 25, 33, 41, 49]
+                    closest = min(valid_frames, key=lambda x: abs(x - frames))
+                    node["inputs"]["length"] = closest
+            
+            # AnimateDiff motion scale
+            if node.get("class_type") == "ADE_AnimateDiffLoaderWithContext":
+                if param_changes.get("motion_scale"):
+                    scale = max(0.5, min(1.5, param_changes["motion_scale"]))
+                    node["inputs"]["motion_scale"] = scale
+            
+            # Random noise seed
+            if node.get("class_type") == "RandomNoise":
+                node["inputs"]["noise_seed"] = node["inputs"].get("noise_seed", 0) + 1
+        
         return modified
     
     async def compose(
@@ -289,23 +404,34 @@ Focus on actionable improvements."""
                 print(f"Error: {result['error']}")
                 break
             
-            # Find and download output image
-            image_path = None
+            # Find and download output media (image or video)
+            media_path = None
+            media_type = "image"
             for node_id, outputs in result.get("outputs", {}).items():
                 if "images" in outputs:
-                    for img_info in outputs["images"]:
-                        image_path = await self.download_image(img_info["filename"])
+                    for media_info in outputs["images"]:
+                        filename = media_info["filename"]
+                        media_path = await self.download_image(filename)
+                        # Detect if it's a video
+                        if filename.endswith(('.webp', '.gif', '.mp4', '.webm')):
+                            media_type = "video"
+                        break
+                # Also check for gifs output node
+                if "gifs" in outputs:
+                    for media_info in outputs["gifs"]:
+                        media_path = await self.download_image(media_info["filename"])
+                        media_type = "video"
                         break
             
-            if not image_path:
-                print("No image output found")
+            if not media_path:
+                print("No output found")
                 break
             
-            print(f"Generated: {image_path.name}")
+            print(f"Generated ({media_type}): {media_path.name}")
             
-            # Analyze with VLM
-            print("Analyzing with Gemini VLM...")
-            analysis = self.analyze_image(image_path, goal)
+            # Analyze with VLM - auto-detect media type
+            print(f"Analyzing {media_type} with Gemini VLM...")
+            analysis = self.analyze_media(media_path, goal)
             
             quality = analysis.get("quality_score", 0)
             print(f"Quality: {quality}/10")
@@ -314,7 +440,8 @@ Focus on actionable improvements."""
             # Record history
             self.history.append({
                 "iteration": iteration + 1,
-                "image": str(image_path),
+                "media": str(media_path),
+                "media_type": media_type,
                 "analysis": analysis,
                 "workflow_snapshot": workflow
             })
@@ -335,7 +462,8 @@ Focus on actionable improvements."""
                     print(f"  Adding to prompt: {', '.join(improvements[:3])}")
         
         return {
-            "final_image": str(image_path) if image_path else None,
+            "final_media": str(media_path) if media_path else None,
+            "media_type": media_type,
             "final_quality": analysis.get("quality_score", 0),
             "iterations": len(self.history),
             "history": self.history
