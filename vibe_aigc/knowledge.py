@@ -63,6 +63,7 @@ class KnowledgeBase:
         self._load_writing_knowledge()
         self._load_design_knowledge()
         self._load_music_knowledge()
+        self._load_visual_generation_knowledge()
     
     def _load_film_knowledge(self) -> None:
         """Film/video production knowledge."""
@@ -268,6 +269,182 @@ class KnowledgeBase:
         )
         
         self._domains["music"] = music
+    
+    def _load_visual_generation_knowledge(self) -> None:
+        """Visual/image generation knowledge for Stable Diffusion & ComfyUI."""
+        visual = DomainKnowledge(domain="visual")
+        
+        # === AESTHETIC STYLES ===
+        visual.add_concept(
+            name="cyberpunk",
+            description="Futuristic dystopian aesthetic with neon and tech",
+            technical_specs={
+                "sd_prompt_tags": ["cyberpunk", "neon lights", "futuristic city", "rain", 
+                                   "holographic displays", "chrome", "dystopian"],
+                "color_palette": ["#FF00FF", "#00FFFF", "#FF0080", "#00FF80", "#1a1a2e"],
+                "lighting": ["neon glow", "rim lighting", "volumetric fog", "light rays"],
+                "composition": ["low angle", "wide shot", "reflective surfaces"],
+                "negative_prompt": ["natural lighting", "daytime", "pastoral", "bright colors"]
+            },
+            examples=["Blade Runner", "Ghost in the Shell", "Akira"]
+        )
+        
+        visual.add_concept(
+            name="neon noir",
+            description="Modern noir with neon lighting and rain-slicked streets",
+            technical_specs={
+                "sd_prompt_tags": ["neon noir", "rain", "night city", "wet streets",
+                                   "reflections", "moody", "cinematic lighting"],
+                "color_palette": ["#FF00FF", "#00FFFF", "#1a1a2e", "#2d132c"],
+                "lighting": ["neon signs", "puddle reflections", "dramatic shadows", "rim light"],
+                "composition": ["dutch angle", "silhouettes", "deep shadows"],
+                "negative_prompt": ["bright", "cheerful", "daytime", "sunny"]
+            }
+        )
+        
+        visual.add_concept(
+            name="anime",
+            description="Japanese animation style",
+            technical_specs={
+                "sd_prompt_tags": ["anime", "cel shading", "vibrant colors", 
+                                   "detailed eyes", "dramatic pose"],
+                "models": ["anything-v5", "counterfeit-v3", "waifu-diffusion"],
+                "cfg_scale": 7,
+                "negative_prompt": ["realistic", "photographic", "3d render", "western"]
+            }
+        )
+        
+        visual.add_concept(
+            name="photorealistic",
+            description="Realistic, photo-quality images",
+            technical_specs={
+                "sd_prompt_tags": ["photorealistic", "hyperrealistic", "8k", "uhd",
+                                   "RAW photo", "dslr", "soft lighting", "high detail"],
+                "models": ["realistic-vision", "deliberate", "photon"],
+                "cfg_scale": 5,
+                "steps": 30,
+                "negative_prompt": ["cartoon", "anime", "painting", "illustration", 
+                                   "drawing", "artificial", "fake"]
+            }
+        )
+        
+        visual.add_concept(
+            name="cinematic",
+            description="Movie-quality visuals with dramatic lighting",
+            technical_specs={
+                "sd_prompt_tags": ["cinematic", "dramatic lighting", "film grain",
+                                   "anamorphic", "depth of field", "bokeh", "lens flare"],
+                "aspect_ratio": "21:9 or 16:9",
+                "lighting": ["three-point lighting", "golden hour", "blue hour", "volumetric"],
+                "composition": ["rule of thirds", "leading lines", "depth layers"]
+            }
+        )
+        
+        visual.add_concept(
+            name="concept art",
+            description="Professional concept art style for games/films",
+            technical_specs={
+                "sd_prompt_tags": ["concept art", "digital painting", "artstation",
+                                   "trending on artstation", "matte painting", "detailed"],
+                "artists": ["greg rutkowski", "craig mullins", "feng zhu"],
+                "negative_prompt": ["photo", "realistic", "amateur"]
+            }
+        )
+        
+        visual.add_concept(
+            name="portrait",
+            description="Character portrait focus",
+            technical_specs={
+                "sd_prompt_tags": ["portrait", "headshot", "face focus", "detailed face",
+                                   "sharp focus", "studio lighting"],
+                "composition": ["centered", "eye level", "close-up"],
+                "lighting": ["rembrandt lighting", "butterfly lighting", "split lighting"],
+                "negative_prompt": ["full body", "wide shot", "multiple people", "crowd"]
+            }
+        )
+        
+        # === QUALITY MODIFIERS ===
+        visual.add_concept(
+            name="high quality",
+            description="Quality boosting prompt modifiers",
+            technical_specs={
+                "sd_prompt_tags": ["masterpiece", "best quality", "highly detailed", 
+                                   "sharp focus", "intricate details", "professional"],
+                "negative_prompt": ["worst quality", "low quality", "blurry", "jpeg artifacts",
+                                   "watermark", "signature", "text", "error", "cropped"]
+            }
+        )
+        
+        # === LIGHTING TECHNIQUES ===
+        visual.add_technique("dramatic lighting", [
+            "Add 'dramatic lighting' or 'cinematic lighting' to prompt",
+            "Include specific light source (neon, golden hour, etc.)",
+            "Add 'volumetric lighting' or 'god rays' for atmosphere",
+            "Use high contrast in composition"
+        ])
+        
+        visual.add_technique("neon lighting", [
+            "Specify neon colors: 'pink neon', 'cyan neon', 'purple neon'",
+            "Add 'neon glow', 'neon signs', 'neon reflections'",
+            "Include 'wet streets' or 'rain' for reflections",
+            "Set scene at night for contrast"
+        ])
+        
+        # === COMFYUI WORKFLOW KNOWLEDGE ===
+        visual.add_concept(
+            name="txt2img",
+            description="Text to image generation workflow",
+            technical_specs={
+                "nodes": ["CheckpointLoaderSimple", "CLIPTextEncode", "KSampler", 
+                         "VAEDecode", "SaveImage"],
+                "optimal_settings": {
+                    "steps": "20-30 for quality, 10-15 for speed",
+                    "cfg": "7-8 for balanced, 5-6 for creative, 10+ for strict",
+                    "sampler": "euler_ancestral for variety, dpm++ for quality"
+                }
+            }
+        )
+        
+        visual.add_concept(
+            name="img2img",
+            description="Image to image transformation workflow",
+            technical_specs={
+                "nodes": ["LoadImage", "VAEEncode", "KSampler", "VAEDecode", "SaveImage"],
+                "optimal_settings": {
+                    "denoise": "0.4-0.6 for subtle changes, 0.7-0.9 for major changes",
+                    "steps": "20-30",
+                    "cfg": "7-10"
+                }
+            }
+        )
+        
+        visual.add_concept(
+            name="character consistency",
+            description="Maintaining character appearance across generations",
+            technical_specs={
+                "techniques": ["IPAdapter", "reference image", "trained LoRA"],
+                "nodes": ["IPAdapter", "IPAdapterFaceID", "ControlNet"],
+                "tips": ["Use same seed for similar poses", "Train character LoRA for best results"]
+            }
+        )
+        
+        # === CONSTRAINTS ===
+        visual.add_constraint("8gb vram", [
+            "Use SD 1.5 or SDXL with optimizations",
+            "Enable --lowvram or --medvram flags",
+            "Max resolution ~768x768 for SD1.5, ~1024x1024 for SDXL",
+            "Use fp8 for Flux models",
+            "Avoid large batch sizes"
+        ])
+        
+        visual.add_constraint("video generation", [
+            "AnimateDiff for short clips (16-32 frames)",
+            "CogVideoX for longer content (requires more VRAM)",
+            "Keep consistent seed and prompt for coherence",
+            "Use motion LoRA for specific movements"
+        ])
+        
+        self._domains["visual"] = visual
     
     def register_domain(self, knowledge: DomainKnowledge) -> None:
         """Register a custom domain knowledge module."""
