@@ -38,6 +38,9 @@ docs = [
     "pymdown-extensions>=10.0.0",
 ]
 
+[project.scripts]
+vibe-aigc = "vibe_aigc.cli:main"
+
 [project.urls]
 Homepage = "https://jmanhype.github.io/vibe-aigc"
 Repository = "https://github.com/jmanhype/vibe-aigc"
