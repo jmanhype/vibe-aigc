@@ -1,12 +1,15 @@
 """Workflow execution engine for running WorkflowPlans."""
 
 import asyncio
-from typing import Any, Dict, List, Set, Optional, Callable
+from typing import Any, Dict, List, Set, Optional, Callable, TYPE_CHECKING
 from datetime import datetime
 from enum import Enum
 import time
 
 from .models import WorkflowPlan, WorkflowNode, WorkflowNodeType
+
+if TYPE_CHECKING:
+    from .persistence import WorkflowCheckpoint
 
 
 class ExecutionStatus(str, Enum):
@@ -144,27 +147,47 @@ class WorkflowExecutor:
         }
         self.progress_callback = progress_callback
 
-    async def execute_plan(self, plan: WorkflowPlan) -> ExecutionResult:
-        """Execute a complete WorkflowPlan with parallel execution and progress tracking."""
+    async def execute_plan(self, plan: WorkflowPlan,
+                          resume_from_checkpoint: Optional['WorkflowCheckpoint'] = None) -> ExecutionResult:
+        """Execute a complete WorkflowPlan with parallel execution and progress tracking.
 
-        result = ExecutionResult(plan.id)
-        result.status = ExecutionStatus.RUNNING
+        Args:
+            plan: The WorkflowPlan to execute
+            resume_from_checkpoint: Optional checkpoint to resume from. If provided,
+                                   already-completed nodes will be skipped.
+
+        Returns:
+            ExecutionResult with combined results from checkpoint and new execution
+        """
+        # Initialize result - either from checkpoint or fresh
+        if resume_from_checkpoint:
+            result = resume_from_checkpoint.execution_result
+            # Reset status to running for resumed execution
+            result.status = ExecutionStatus.RUNNING
+            completed_node_ids = self._get_completed_node_ids(result)
+            self._emit_progress(ProgressEventType.WORKFLOW_STARTED,
+                              message=f"Resuming workflow: {plan.id} ({len(completed_node_ids)} nodes already complete)")
+        else:
+            result = ExecutionResult(plan.id)
+            result.status = ExecutionStatus.RUNNING
+            completed_node_ids = set()
+            self._emit_progress(ProgressEventType.WORKFLOW_STARTED,
+                              message=f"Starting workflow: {plan.id}")
 
         start_time = time.time()
         execution_failed = False
 
-        # Emit workflow started event
-        self._emit_progress(ProgressEventType.WORKFLOW_STARTED,
-                          message=f"Starting workflow: {plan.id}")
-
         try:
-            # Group independent root nodes for parallel execution
-            parallel_groups = self._build_parallel_execution_groups(plan.root_nodes, result)
+            # Identify remaining nodes (exclude already completed when resuming)
+            remaining_root_nodes = self._identify_remaining_nodes(plan.root_nodes, completed_node_ids)
+
+            # Group independent nodes for parallel execution
+            parallel_groups = self._build_parallel_execution_groups(remaining_root_nodes, result)
             result.execution_groups = [[node.id for node in group] for group in parallel_groups]
 
             # Calculate progress tracking
             total_nodes = self._count_total_nodes(plan.root_nodes)
-            completed_nodes = 0
+            completed_nodes = len(completed_node_ids)  # Start from already completed count
 
             # Execute each parallel group in sequence, nodes within groups in parallel
             for group_idx, group in enumerate(parallel_groups):
@@ -234,6 +257,51 @@ class WorkflowExecutor:
             if not dep_result or dep_result.status != ExecutionStatus.COMPLETED:
                 return False
         return True
+
+    def _get_completed_node_ids(self, result: ExecutionResult) -> Set[str]:
+        """Get set of node IDs that have already completed successfully."""
+        return {
+            node_id for node_id, node_result in result.node_results.items()
+            if node_result.status == ExecutionStatus.COMPLETED
+        }
+
+    def _identify_remaining_nodes(self, nodes: List[WorkflowNode],
+                                  completed_node_ids: Set[str]) -> List[WorkflowNode]:
+        """Identify nodes that still need to be executed.
+
+        Returns a list of nodes (with filtered children) that need execution.
+        Completed nodes are excluded, but their incomplete children are retained
+        under a synthetic parent structure.
+
+        Args:
+            nodes: Root nodes to filter
+            completed_node_ids: Set of already completed node IDs
+
+        Returns:
+            List of nodes needing execution
+        """
+        remaining = []
+
+        for node in nodes:
+            if node.id in completed_node_ids:
+                # Node is done, but check if children need execution
+                remaining_children = self._identify_remaining_nodes(node.children, completed_node_ids)
+                # Add remaining children as independent nodes (parent completed)
+                remaining.extend(remaining_children)
+            else:
+                # Node needs execution - filter its children too
+                filtered_node = WorkflowNode(
+                    id=node.id,
+                    type=node.type,
+                    description=node.description,
+                    parameters=node.parameters,
+                    dependencies=node.dependencies,
+                    children=self._identify_remaining_nodes(node.children, completed_node_ids),
+                    estimated_duration=node.estimated_duration
+                )
+                remaining.append(filtered_node)
+
+        return remaining
 
     def _mark_tree_failed(self, node: WorkflowNode, result: ExecutionResult, error: str):
         """Mark a node and its children as failed."""
@@ -308,6 +376,21 @@ class WorkflowExecutor:
                                              total_nodes: int,
                                              completed_base: int):
         """Execute node tree with progress reporting."""
+
+        # Skip already completed nodes (for resume scenarios)
+        if node.id in result.node_results:
+            existing = result.node_results[node.id]
+            if existing.status == ExecutionStatus.COMPLETED:
+                # Node already done, just process children
+                if node.children:
+                    child_groups = self._build_parallel_execution_groups(node.children, result)
+                    for group in child_groups:
+                        child_tasks = [
+                            self._execute_node_tree_with_progress(child, result, total_nodes, completed_base)
+                            for child in group
+                        ]
+                        await asyncio.gather(*child_tasks, return_exceptions=True)
+                return
 
         # Check dependencies
         if not self._dependencies_satisfied(node, result):
