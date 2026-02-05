@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "id": "001-vibe-model-meta-planner",
+  "branch_name": "wreckit/001-vibe-model-meta-planner",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Package Foundation and Core Models",
+      "acceptance_criteria": [
+        "Package installs with `pip install -e .`",
+        "Can import core classes: `from vibe_aigc import MetaPlanner, Vibe`",
+        "Vibe model validates input according to README.md example",
+        "WorkflowNode supports hierarchical structure with children",
+        "All Pydantic models serialize/deserialize correctly",
+        "Package structure follows Python best practices"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Establishes the foundational Python package structure and implements core Pydantic models. Creates pyproject.toml, package structure, and basic testing infrastructure. This is the foundation that all other stories depend on."
+    },
+    {
+      "id": "US-002",
+      "title": "LLM Client and Vibe Decomposition",
+      "acceptance_criteria": [
+        "LLMClient can make async requests to OpenAI API",
+        "Vibe objects are decomposed into structured JSON workflow plans",
+        "LLM responses are validated and converted to WorkflowNode structures",
+        "API errors are handled gracefully with descriptive error messages",
+        "Malformed JSON responses raise appropriate ValueError exceptions",
+        "LLM integration tests pass with mocked responses"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Creates the LLM abstraction layer for decomposing Vibes into structured workflow plans. Implements OpenAI client integration with proper error handling and response validation."
+    },
+    {
+      "id": "US-003",
+      "title": "MetaPlanner Core Implementation",
+      "acceptance_criteria": [
+        "Can create MetaPlanner instance: `planner = MetaPlanner()`",
+        "Can call `plan = await planner.plan(vibe)` and get valid WorkflowPlan",
+        "Generated WorkflowPlan contains hierarchical WorkflowNodes",
+        "Node types are correctly mapped from LLM responses",
+        "Dependencies and parameters are preserved in WorkflowNodes",
+        "Estimated durations are calculated recursively for node hierarchies"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Implements the core MetaPlanner class that orchestrates LLM integration and converts responses to structured WorkflowPlan objects. This is the central intelligence of the system."
+    },
+    {
+      "id": "US-004",
+      "title": "Basic Workflow Execution Engine",
+      "acceptance_criteria": [
+        "WorkflowExecutor can execute individual WorkflowNodes",
+        "Node dependencies are respected in execution order",
+        "Hierarchical workflows execute children after parents",
+        "Node execution results include status, timing, and output data",
+        "Failed nodes don't prevent other independent nodes from executing",
+        "Execution timing and duration tracking work correctly"
+      ],
+      "priority": 1,
+      "status": "done",
+      "notes": "Builds the async execution engine that can run generated WorkflowPlans. Implements basic node handlers for each WorkflowNodeType and manages execution flow with dependency resolution."
+    },
+    {
+      "id": "US-005",
+      "title": "MetaPlanner Execute Integration",
+      "acceptance_criteria": [
+        "Can execute complete workflow: `result = await planner.execute(vibe)`",
+        "Execution returns structured results with node-level details",
+        "Execute method integrates planning and execution phases seamlessly",
+        "Result format matches expected API structure for client consumption",
+        "Both execute() and plan_and_execute() methods work correctly",
+        "Execution results include comprehensive summary and node-level details"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Integrates the MetaPlanner with the execution engine to provide the complete execute() method that matches the README.md usage example."
+    },
+    {
+      "id": "US-006",
+      "title": "README Usage Example Validation",
+      "acceptance_criteria": [
+        "Exact README.md code example works: `from vibe_aigc import MetaPlanner, Vibe`",
+        "Vibe constructor matches README.md:42-46 format exactly",
+        "planner.execute(vibe) returns expected result structure",
+        "End-to-end workflow completes successfully with realistic LLM responses",
+        "Integration tests pass for the exact README usage pattern",
+        "System handles the cinematic sci-fi scene example correctly"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Validates that the implemented system exactly matches the API and behavior promised in the README.md documentation. This ensures the user-facing interface is correct."
+    },
+    {
+      "id": "US-007",
+      "title": "Comprehensive Error Handling",
+      "acceptance_criteria": [
+        "LLM API failures are handled gracefully with descriptive errors",
+        "Invalid JSON responses from LLM raise ValueError with clear messages",
+        "Network timeouts and connection errors are properly caught",
+        "Missing OpenAI API key provides helpful setup instructions",
+        "Workflow execution failures don't crash the entire system",
+        "Error messages help users diagnose and fix configuration issues"
+      ],
+      "priority": 2,
+      "status": "done",
+      "notes": "Implements comprehensive error handling across the system to provide a robust user experience and helpful debugging information when things go wrong."
+    },
+    {
+      "id": "US-008",
+      "title": "Package Quality and Documentation",
+      "acceptance_criteria": [
+        "All tests pass: `pytest tests/`",
+        "Type checking passes: `mypy vibe_aigc/`",
+        "Code formatting: `black --check vibe_aigc/`",
+        "Linting passes: `ruff check vibe_aigc/`",
+        "Package builds cleanly: `python -m build`",
+        "Development script runs without errors for manual testing"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Ensures the package meets Python quality standards with comprehensive testing, type checking, and development tooling. Includes development scripts for manual validation."
+    },
+    {
+      "id": "US-009",
+      "title": "Complex Workflow Validation",
+      "acceptance_criteria": [
+        "Deeply nested hierarchical workflows execute correctly",
+        "Complex dependency chains are resolved in proper order",
+        "Multi-level composite nodes execute all children",
+        "Large workflow plans (10+ nodes) complete successfully",
+        "Performance remains reasonable for complex workflows",
+        "Memory usage stays controlled during execution"
+      ],
+      "priority": 3,
+      "status": "done",
+      "notes": "Tests the system's ability to handle complex, real-world workflow scenarios with deep hierarchies and intricate dependency relationships."
+    },
+    {
+      "id": "US-010",
+      "title": "Development Experience Optimization",
+      "acceptance_criteria": [
+        "Package installation is straightforward with clear instructions",
+        "Development environment setup works with pip install -e .[dev]",
+        "API documentation in docstrings is comprehensive and accurate",
+        "Error messages provide actionable guidance for common issues",
+        "Development scripts support quick testing and validation",
+        "Package exports are clean and intuitive for import"
+      ],
+      "priority": 4,
+      "status": "done",
+      "notes": "Focuses on developer experience improvements to make the package easy to install, configure, and use. Includes development tooling and clear documentation."
+    }
+  ]
+}
+

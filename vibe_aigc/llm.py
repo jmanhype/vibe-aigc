@@ -23,7 +23,16 @@ class LLMClient:
 
     def __init__(self, config: Optional[LLMConfig] = None):
         self.config = config or LLMConfig()
-        self.client = AsyncOpenAI(api_key=self.config.api_key)
+        try:
+            self.client = AsyncOpenAI(api_key=self.config.api_key)
+        except Exception as e:
+            if "api_key" in str(e).lower():
+                raise RuntimeError(
+                    "OpenAI API key is required. Please set the OPENAI_API_KEY environment "
+                    "variable or pass an api_key to LLMConfig. "
+                    "Get your API key from: https://platform.openai.com/api-keys"
+                ) from e
+            raise
 
     async def decompose_vibe(self, vibe: Vibe) -> Dict[str, Any]:
         """Decompose a Vibe into structured workflow plan data."""
@@ -67,11 +76,39 @@ Additional context: {vibe.metadata}"""
 
             content = response.choices[0].message.content
             if not content:
-                raise ValueError("Empty response from LLM")
+                raise ValueError(
+                    "Empty response from LLM. This could indicate an API issue or "
+                    "the request was filtered. Please try again or adjust your vibe."
+                )
 
             return json.loads(content)
 
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON response from LLM: {e}")
+            raise ValueError(
+                f"Invalid JSON response from LLM: {e}. "
+                f"The LLM returned malformed data. Please try again. "
+                f"Response content: {content[:200] if 'content' in locals() else 'N/A'}..."
+            ) from e
         except Exception as e:
-            raise RuntimeError(f"LLM request failed: {e}")
+            error_lower = str(e).lower()
+            if any(keyword in error_lower for keyword in ["api_key", "unauthorized", "authentication", "invalid.*key"]):
+                raise RuntimeError(
+                    f"LLM authentication failed: {e}. "
+                    "Please check your OpenAI API key and ensure it's valid. "
+                    "Get your API key from: https://platform.openai.com/api-keys"
+                ) from e
+            elif "rate limit" in str(e).lower():
+                raise RuntimeError(
+                    f"OpenAI API rate limit exceeded: {e}. "
+                    "Please wait a moment and try again, or check your API plan limits."
+                ) from e
+            elif "timeout" in str(e).lower():
+                raise RuntimeError(
+                    f"Network timeout while calling LLM: {e}. "
+                    "Please check your internet connection and try again."
+                ) from e
+            else:
+                raise RuntimeError(
+                    f"LLM request failed: {e}. "
+                    f"This could be a network issue, API outage, or configuration problem."
+                ) from e

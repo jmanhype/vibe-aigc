@@ -19,8 +19,13 @@ class MetaPlanner:
     async def plan(self, vibe: Vibe) -> WorkflowPlan:
         """Generate a WorkflowPlan from a Vibe using LLM decomposition."""
 
-        # Get structured decomposition from LLM
-        plan_data = await self.llm_client.decompose_vibe(vibe)
+        try:
+            # Get structured decomposition from LLM
+            plan_data = await self.llm_client.decompose_vibe(vibe)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to generate workflow plan for vibe '{vibe.description}': {e}"
+            ) from e
 
         # Convert LLM response to structured WorkflowPlan
         plan_id = plan_data.get("id", f"plan-{uuid.uuid4().hex[:8]}")
@@ -47,11 +52,21 @@ class MetaPlanner:
     async def execute(self, vibe: Vibe) -> Dict[str, Any]:
         """Plan and execute a Vibe workflow with full execution engine."""
 
-        # Generate execution plan
-        plan = await self.plan(vibe)
+        try:
+            # Generate execution plan
+            plan = await self.plan(vibe)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to plan workflow for vibe '{vibe.description}': {e}"
+            ) from e
 
-        # Execute the plan
-        execution_result = await self.executor.execute_plan(plan)
+        try:
+            # Execute the plan
+            execution_result = await self.executor.execute_plan(plan)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to execute workflow plan '{plan.id}': {e}"
+            ) from e
 
         # Format result for API compatibility
         summary = execution_result.get_summary()
