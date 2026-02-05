@@ -7,14 +7,13 @@ name = "vibe-aigc"
 version = "0.1.0"
 description = "A New Paradigm for Content Generation via Agentic Orchestration"
 authors = [{name = "Vibe AIGC Contributors"}]
-license = {text = "MIT"}
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
 keywords = ["ai", "aigc", "agents", "orchestration", "content-generation", "llm", "workflow"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
