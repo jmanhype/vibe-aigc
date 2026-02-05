@@ -105,17 +105,21 @@ class LLMTool(BaseTool):
     
     The foundational AIGC capability - generates text content
     based on prompts and context.
+    
+    Supports OpenAI-compatible endpoints (z.ai, Together, etc.) via base_url.
     """
     
     def __init__(
         self,
         provider: str = "openai",
         model: Optional[str] = None,
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None
     ):
         self.provider = provider
         self.model = model or self._default_model()
         self.api_key = api_key or os.getenv(self._api_key_env())
+        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
         self._client = None
     
     def _default_model(self) -> str:
@@ -212,7 +216,7 @@ class LLMTool(BaseTool):
         max_tokens: int,
         temperature: float
     ) -> ToolResult:
-        """Execute using OpenAI API."""
+        """Execute using OpenAI API (or compatible endpoint like z.ai)."""
         try:
             from openai import AsyncOpenAI
         except ImportError:
@@ -222,7 +226,8 @@ class LLMTool(BaseTool):
                 error="openai package not installed. Run: pip install openai"
             )
         
-        client = AsyncOpenAI(api_key=self.api_key)
+        # Support OpenAI-compatible endpoints (z.ai, Together, etc.)
+        client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         
         response = await client.chat.completions.create(
             model=self.model,

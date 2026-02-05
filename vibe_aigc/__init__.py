@@ -99,3 +99,5 @@ __all__ = [
     # Asset Bank
     "AssetBank", "Character", "StyleGuide", "Artifact", "create_asset_bank"
 ]
+# ComfyUI backend for actual image generation
+from .comfyui import ComfyUIBackend, ComfyUIConfig, ComfyUIImageTool, create_comfyui_registry

@@ -1,0 +1,37 @@
+{
+  "characters": {
+    "10b662a2": {
+      "id": "10b662a2",
+      "name": "Nova",
+      "description": "A rebellious android seeking freedom",
+      "visual_description": "Chrome body, glowing blue eyes, purple hair highlights",
+      "personality": "",
+      "voice_description": "",
+      "reference_images": [],
+      "color_palette": [],
+      "created_at": "2026-02-05T14:06:43.894144",
+      "metadata": {}
+    }
+  },
+  "style_guides": {
+    "fe8af8dc": {
+      "id": "fe8af8dc",
+      "name": "Neon Noir",
+      "description": "Cyberpunk with film noir influences",
+      "color_palette": [
+        "#FF00FF",
+        "#00FFFF",
+        "#1a1a2e"
+      ],
+      "typography": {},
+      "mood": "melancholic yet hopeful",
+      "aesthetic": "",
+      "reference_images": [],
+      "mood_board": [],
+      "aspect_ratio": "",
+      "resolution": "",
+      "metadata": {}
+    }
+  },
+  "artifacts": {}
+}

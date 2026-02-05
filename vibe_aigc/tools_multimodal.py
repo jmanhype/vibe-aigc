@@ -23,7 +23,7 @@ class ImageGenerationTool(BaseTool):
     Image generation using DALL-E 3 or Replicate models.
     
     Supports:
-    - OpenAI DALL-E 3
+    - OpenAI DALL-E 3 (and compatible like z.ai)
     - Replicate Flux
     - Replicate SDXL
     """
@@ -32,11 +32,13 @@ class ImageGenerationTool(BaseTool):
         self,
         provider: str = "openai",  # openai, replicate
         model: Optional[str] = None,
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None
     ):
         self.provider = provider
         self.model = model or self._default_model()
         self.api_key = api_key or os.getenv(self._api_key_env())
+        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
     
     def _default_model(self) -> str:
         defaults = {
@@ -103,13 +105,13 @@ class ImageGenerationTool(BaseTool):
             return ToolResult(success=False, output=None, error=str(e))
     
     async def _execute_dalle(self, prompt: str, size: str, style: str, quality: str) -> ToolResult:
-        """Generate image using DALL-E 3."""
+        """Generate image using DALL-E 3 (or compatible like z.ai)."""
         try:
             from openai import AsyncOpenAI
         except ImportError:
             return ToolResult(success=False, output=None, error="openai package not installed")
         
-        client = AsyncOpenAI(api_key=self.api_key)
+        client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         
         response = await client.images.generate(
             model=self.model,
@@ -327,20 +329,22 @@ class AudioGenerationTool(BaseTool):
 
 class TTSTool(BaseTool):
     """
-    Text-to-Speech using ElevenLabs or OpenAI.
+    Text-to-Speech using ElevenLabs or OpenAI (or compatible like z.ai).
     """
     
     def __init__(
         self,
         provider: str = "openai",
         voice: str = "alloy",
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None
     ):
         self.provider = provider
         self.voice = voice
         self.api_key = api_key or os.getenv(
             "ELEVENLABS_API_KEY" if provider == "elevenlabs" else "OPENAI_API_KEY"
         )
+        self.base_url = base_url or os.getenv("OPENAI_BASE_URL")
     
     @property
     def spec(self) -> ToolSpec:
@@ -389,13 +393,13 @@ class TTSTool(BaseTool):
             return ToolResult(success=False, output=None, error=str(e))
     
     async def _execute_openai_tts(self, text: str, voice: str) -> ToolResult:
-        """Generate speech using OpenAI TTS."""
+        """Generate speech using OpenAI TTS (or compatible like z.ai)."""
         try:
             from openai import AsyncOpenAI
         except ImportError:
             return ToolResult(success=False, output=None, error="openai package not installed")
         
-        client = AsyncOpenAI(api_key=self.api_key)
+        client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         
         response = await client.audio.speech.create(
             model="tts-1",

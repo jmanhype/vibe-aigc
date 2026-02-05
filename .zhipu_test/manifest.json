@@ -1,0 +1,49 @@
+{
+  "characters": {
+    "e60caae5": {
+      "id": "e60caae5",
+      "name": "Nova",
+      "description": "A rebellious android seeking freedom in a neon-lit dystopia",
+      "visual_description": "Chrome body, glowing blue eyes, purple hair highlights",
+      "personality": "",
+      "voice_description": "",
+      "reference_images": [],
+      "color_palette": [],
+      "created_at": "2026-02-05T12:04:38.560554",
+      "metadata": {}
+    },
+    "d03a68cf": {
+      "id": "d03a68cf",
+      "name": "The Architect",
+      "description": "An elderly human who designed the android uprising",
+      "visual_description": "Weathered face, white beard, cybernetic left eye",
+      "personality": "",
+      "voice_description": "",
+      "reference_images": [],
+      "color_palette": [],
+      "created_at": "2026-02-05T12:04:38.560554",
+      "metadata": {}
+    }
+  },
+  "style_guides": {
+    "3664aacc": {
+      "id": "3664aacc",
+      "name": "Neon Noir",
+      "description": "Cyberpunk with film noir influences",
+      "color_palette": [
+        "#FF00FF",
+        "#00FFFF",
+        "#1a1a2e"
+      ],
+      "typography": {},
+      "mood": "melancholic yet hopeful, tension building to release",
+      "aesthetic": "",
+      "reference_images": [],
+      "mood_board": [],
+      "aspect_ratio": "",
+      "resolution": "",
+      "metadata": {}
+    }
+  },
+  "artifacts": {}
+}

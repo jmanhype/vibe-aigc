@@ -16,6 +16,7 @@ class LLMConfig(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 2000
     api_key: Optional[str] = None
+    base_url: Optional[str] = None  # Custom endpoint (e.g., z.ai, local models)
 
 
 class LLMClient:
@@ -24,7 +25,10 @@ class LLMClient:
     def __init__(self, config: Optional[LLMConfig] = None):
         self.config = config or LLMConfig()
         try:
-            self.client = AsyncOpenAI(api_key=self.config.api_key)
+            client_kwargs = {"api_key": self.config.api_key}
+            if self.config.base_url:
+                client_kwargs["base_url"] = self.config.base_url
+            self.client = AsyncOpenAI(**client_kwargs)
         except Exception as e:
             if "api_key" in str(e).lower():
                 raise RuntimeError(
@@ -122,6 +126,17 @@ Focus on logical decomposition and clear dependencies. Keep tasks atomic and exe
                     "Empty response from LLM. This could indicate an API issue or "
                     "the request was filtered. Please try again or adjust your vibe."
                 )
+
+            # Strip markdown code blocks if present (common with some LLMs like z.ai/GLM)
+            content = content.strip()
+            if content.startswith("```"):
+                # Remove opening ```json or ``` 
+                first_newline = content.find("\n")
+                if first_newline != -1:
+                    content = content[first_newline + 1:]
+                # Remove closing ```
+                if content.endswith("```"):
+                    content = content[:-3].strip()
 
             return json.loads(content)
 
