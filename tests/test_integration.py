@@ -277,8 +277,8 @@ class TestRobustnessAndEdgeCases:
         vibe = Vibe(description="Test malformed response")
         planner = MetaPlanner()
 
-        # Should raise ValueError for invalid JSON
-        with pytest.raises(ValueError, match="Invalid JSON response from LLM"):
+        # Should raise RuntimeError (ValueError gets wrapped) for invalid JSON
+        with pytest.raises(RuntimeError, match="Invalid JSON response from LLM"):
             await planner.execute(vibe)
 
 

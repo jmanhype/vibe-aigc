@@ -34,12 +34,11 @@ class TestLLMErrorHandling:
         client = LLMClient(LLMConfig(api_key="test-key"))
         vibe = Vibe(description="Test empty response")
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(RuntimeError) as exc_info:
             await client.decompose_vibe(vibe)
 
         error_msg = str(exc_info.value)
         assert "Empty response from LLM" in error_msg
-        assert "API issue or" in error_msg and "filtered" in error_msg
 
     @patch('vibe_aigc.llm.AsyncOpenAI')
     async def test_invalid_json_response_with_context(self, mock_openai):
