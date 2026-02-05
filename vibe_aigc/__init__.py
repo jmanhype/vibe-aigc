@@ -101,3 +101,12 @@ __all__ = [
 ]
 # ComfyUI backend for actual image generation
 from .comfyui import ComfyUIBackend, ComfyUIConfig, ComfyUIImageTool, create_comfyui_registry
+
+# Workflow templates
+from .workflows import WorkflowLibrary, WorkflowTemplate, create_workflow_library
+
+# Audio generation
+from .audio import MusicGenBackend, RiffusionBackend, ElevenLabsBackend, MusicGenerationTool, TTSTool
+
+# MV Pipeline
+from .mv_pipeline import MVPipeline, Shot, Storyboard, create_mv

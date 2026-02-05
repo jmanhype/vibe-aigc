@@ -24,6 +24,7 @@ tests/test_workflow_resume.py
 vibe_aigc/__init__.py
 vibe_aigc/agents.py
 vibe_aigc/assets.py
+vibe_aigc/character.py
 vibe_aigc/cli.py
 vibe_aigc/comfyui.py
 vibe_aigc/executor.py
@@ -34,6 +35,7 @@ vibe_aigc/persistence.py
 vibe_aigc/planner.py
 vibe_aigc/tools.py
 vibe_aigc/tools_multimodal.py
+vibe_aigc/video.py
 vibe_aigc/visualization.py
 vibe_aigc.egg-info/PKG-INFO
 vibe_aigc.egg-info/SOURCES.txt
