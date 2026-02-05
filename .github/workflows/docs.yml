@@ -33,10 +33,16 @@ jobs:
       - name: Build docs
         run: mkdocs build
       
+      - name: Combine landing page and docs
+        run: |
+          mkdir -p _site
+          cp landing/index.html _site/
+          mv site _site/docs
+      
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: _site
 
   deploy:
     environment:

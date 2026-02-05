@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vibe AIGC - A New Paradigm for Content Generation via Agentic Orchestration</title>
+  <meta name="description" content="Bridge the Intent-Execution Gap with Vibe AIGC. Express high-level creative intent and let the system automatically generate executable workflows.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --primary: #7c3aed;
+  --primary-dark: #5b21b6;
+  --secondary: #f59e0b;
+  --bg-dark: #0f0f23;
+  --bg-card: #1a1a2e;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-dark);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.container { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
+
+/* Hero */
+.hero {
+  min-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, var(--bg-dark) 0%, #1e1e3f 100%);
+}
+
+.hero h1 {
+  font-size: 4rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 1rem;
+}
+
+.hero .tagline {
+  font-size: 1.5rem;
+  color: var(--text-muted);
+  max-width: 700px;
+  margin-bottom: 1rem;
+}
+
+.hero .paper-link {
+  color: var(--secondary);
+  text-decoration: none;
+  font-size: 1rem;
+  margin-bottom: 2rem;
+  display: inline-block;
+}
+
+.hero .paper-link:hover { text-decoration: underline; }
+
+.badges {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.badges img { height: 24px; }
+
+.cta-buttons {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn {
+  padding: 0.875rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 2px solid var(--text-muted);
+}
+
+.btn-secondary:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Features */
+.features {
+  padding: 6rem 2rem;
+  background: var(--bg-dark);
+}
+
+.section-title {
+  text-align: center;
+  font-size: 2.5rem;
+  margin-bottom: 3rem;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.feature-card {
+  background: var(--bg-card);
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  transition: all 0.3s;
+}
+
+.feature-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-4px);
+}
+
+.feature-card .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+.feature-card h3 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+.feature-card p { color: var(--text-muted); }
+
+/* Architecture */
+.architecture {
+  padding: 6rem 2rem;
+  background: linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-card) 100%);
+}
+
+.arch-diagram {
+  background: var(--bg-dark);
+  border-radius: 12px;
+  padding: 2rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 1.1rem;
+  text-align: center;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  max-width: 800px;
+  margin: 0 auto;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.arch-diagram .flow { color: var(--secondary); }
+.arch-diagram .component { color: var(--primary); }
+
+/* Code Example */
+.code-section {
+  padding: 6rem 2rem;
+  background: var(--bg-card);
+}
+
+.code-block {
+  background: var(--bg-dark);
+  border-radius: 12px;
+  padding: 2rem;
+  overflow-x: auto;
+  max-width: 800px;
+  margin: 0 auto;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.code-block pre {
+  margin: 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.kw { color: #c792ea; }
+.str { color: #c3e88d; }
+.cmt { color: #546e7a; }
+.fn { color: #82aaff; }
+.op { color: #89ddff; }
+
+/* Install */
+.install {
+  padding: 6rem 2rem;
+  background: var(--bg-dark);
+  text-align: center;
+}
+
+.install-cmd {
+  display: inline-block;
+  background: var(--bg-card);
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-family: 'Fira Code', monospace;
+  font-size: 1.25rem;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  margin-top: 1rem;
+}
+
+/* Footer */
+.footer {
+  padding: 3rem 2rem;
+  background: var(--bg-card);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.footer a { color: var(--primary); text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+
+.citation {
+  background: var(--bg-dark);
+  padding: 1.5rem;
+  border-radius: 8px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.85rem;
+  text-align: left;
+  max-width: 600px;
+  margin: 2rem auto;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+@media (max-width: 768px) {
+  .hero h1 { font-size: 2.5rem; }
+  .hero .tagline { font-size: 1.1rem; }
+  .section-title { font-size: 2rem; }
+  .arch-diagram { font-size: 0.8rem; }
+}
+  </style>
+</head>
+<body>
+
+<section class="hero">
+  <h1>Vibe AIGC</h1>
+  <p class="tagline">A New Paradigm for Content Generation via Agentic Orchestration</p>
+  <a href="https://arxiv.org/abs/2602.04575" class="paper-link">Based on arXiv:2602.04575</a>
+  
+  <div class="badges">
+    <a href="https://github.com/jmanhype/vibe-aigc/actions"><img src="https://github.com/jmanhype/vibe-aigc/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://pypi.org/project/vibe-aigc/"><img src="https://img.shields.io/pypi/v/vibe-aigc.svg" alt="PyPI"></a>
+    <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python">
+    <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License">
+  </div>
+  
+  <div class="cta-buttons">
+    <a href="docs/" class="btn btn-primary">📚 Documentation</a>
+    <a href="https://github.com/jmanhype/vibe-aigc" class="btn btn-secondary">⭐ GitHub</a>
+    <a href="https://pypi.org/project/vibe-aigc/" class="btn btn-secondary">📦 PyPI</a>
+  </div>
+</section>
+
+<section class="features">
+  <h2 class="section-title">Key Features</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="icon">🎯</div>
+      <h3>Vibe-based Planning</h3>
+      <p>Express high-level creative intent as a "Vibe" and let the system decompose it into executable workflows automatically.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">⚡</div>
+      <h3>Parallel Execution</h3>
+      <p>Independent workflow nodes execute concurrently for faster results without sacrificing correctness.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🔄</div>
+      <h3>Adaptive Replanning</h3>
+      <p>Automatic workflow adaptation when nodes fail. The system recovers and continues without manual intervention.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">💾</div>
+      <h3>Checkpoint/Resume</h3>
+      <p>Save workflow state at any point and resume later. Perfect for long-running tasks and failure recovery.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">📊</div>
+      <h3>Progress Tracking</h3>
+      <p>Real-time callbacks and visualization during execution. Know exactly what's happening at every step.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">🎨</div>
+      <h3>Workflow Visualization</h3>
+      <p>Generate ASCII and Mermaid diagrams of your workflows for documentation and debugging.</p>
+    </div>
+  </div>
+</section>
+
+<section class="architecture">
+  <h2 class="section-title">Architecture</h2>
+  <div class="arch-diagram"><span class="component">User Vibe</span> <span class="flow">→</span> <span class="component">MetaPlanner</span> <span class="flow">→</span> <span class="component">Agentic Pipeline</span> <span class="flow">→</span> <span class="component">Execution</span> <span class="flow">→</span> <span class="component">Result</span>
+     <span class="flow">↑</span>                              <span class="flow">↓</span>
+     <span class="flow">└────────────</span> <span class="component">Feedback Loop</span> <span class="flow">─────────────┘</span></div>
+</section>
+
+<section class="code-section">
+  <h2 class="section-title">Quick Example</h2>
+  <div class="code-block">
+<pre><span class="kw">from</span> vibe_aigc <span class="kw">import</span> MetaPlanner, Vibe
+
+<span class="cmt"># Express your creative intent</span>
+vibe <span class="op">=</span> <span class="fn">Vibe</span>(
+    description<span class="op">=</span><span class="str">"Create a cinematic sci-fi trailer"</span>,
+    style<span class="op">=</span><span class="str">"dark, atmospheric, Blade Runner aesthetic"</span>,
+    constraints<span class="op">=</span>[<span class="str">"under 60 seconds"</span>, <span class="str">"no dialogue"</span>]
+)
+
+<span class="cmt"># Let the Meta-Planner handle the rest</span>
+planner <span class="op">=</span> <span class="fn">MetaPlanner</span>()
+result <span class="op">=</span> <span class="kw">await</span> planner.<span class="fn">execute</span>(vibe)</pre>
+  </div>
+</section>
+
+<section class="install">
+  <h2 class="section-title">Installation</h2>
+  <div class="install-cmd">pip install vibe-aigc</div>
+</section>
+
+<section class="features" style="padding-top: 4rem;">
+  <h2 class="section-title">Citation</h2>
+  <div class="citation">@article{vibe-aigc-2025,
+  title={Vibe AIGC: A New Paradigm for Content 
+         Generation via Agentic Orchestration},
+  journal={arXiv preprint arXiv:2602.04575},
+  year={2025}
+}</div>
+</section>
+
+<footer class="footer">
+  <p>
+    <a href="https://github.com/jmanhype/vibe-aigc">GitHub</a> · 
+    <a href="https://pypi.org/project/vibe-aigc/">PyPI</a> · 
+    <a href="docs/">Documentation</a> · 
+    <a href="https://arxiv.org/abs/2602.04575">Paper</a>
+  </p>
+  <p style="margin-top: 1rem;">MIT License · Made with 🔮 by the Vibe AIGC Contributors</p>
+</footer>
+
+</body>
+</html>
