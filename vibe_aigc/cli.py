@@ -17,7 +17,7 @@ def create_parser() -> argparse.ArgumentParser:
         prog="vibe-aigc",
         description="Vibe AIGC - Content Generation via Agentic Orchestration",
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.1.1")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 

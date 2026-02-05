@@ -8,7 +8,7 @@ exclude = ["tests*", "docs*", "examples*", "landing*"]
 
 [project]
 name = "vibe-aigc"
-version = "0.1.0"
+version = "0.1.1"
 description = "A New Paradigm for Content Generation via Agentic Orchestration"
 authors = [{name = "Vibe AIGC Contributors"}]
 license = "MIT"

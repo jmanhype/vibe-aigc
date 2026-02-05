@@ -1,12 +1,13 @@
 Metadata-Version: 2.4
 Name: vibe-aigc
-Version: 0.1.0
+Version: 0.1.1
 Summary: A New Paradigm for Content Generation via Agentic Orchestration
 Author: Vibe AIGC Contributors
 License-Expression: MIT
-Project-URL: Homepage, https://github.com/jmanhype/vibe-aigc
+Project-URL: Homepage, https://jmanhype.github.io/vibe-aigc
 Project-URL: Repository, https://github.com/jmanhype/vibe-aigc
-Project-URL: Documentation, https://github.com/jmanhype/vibe-aigc#readme
+Project-URL: Documentation, https://jmanhype.github.io/vibe-aigc
+Project-URL: Changelog, https://jmanhype.github.io/vibe-aigc/changelog
 Project-URL: Issues, https://github.com/jmanhype/vibe-aigc/issues
 Keywords: ai,aigc,agents,orchestration,content-generation,llm,workflow
 Classifier: Development Status :: 4 - Beta
@@ -26,30 +27,96 @@ Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
 Requires-Dist: black>=23.0.0; extra == "dev"
 Requires-Dist: ruff>=0.1.0; extra == "dev"
 Requires-Dist: mypy>=1.0.0; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: mkdocs-material>=9.0.0; extra == "docs"
+Requires-Dist: mkdocstrings[python]>=0.24.0; extra == "docs"
+Requires-Dist: pymdown-extensions>=10.0.0; extra == "docs"
 Dynamic: license-file
 
 # Vibe AIGC
 
 [![CI](https://github.com/jmanhype/vibe-aigc/actions/workflows/ci.yml/badge.svg)](https://github.com/jmanhype/vibe-aigc/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/jmanhype/vibe-aigc/branch/main/graph/badge.svg)](https://codecov.io/gh/jmanhype/vibe-aigc)
+[![PyPI](https://img.shields.io/pypi/v/vibe-aigc.svg)](https://pypi.org/project/vibe-aigc/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://jmanhype.github.io/vibe-aigc)
 
 **A New Paradigm for Content Generation via Agentic Orchestration**
 
 Based on [arXiv:2602.04575](https://arxiv.org/abs/2602.04575)
 
-## Overview
+📚 **[Documentation](https://jmanhype.github.io/vibe-aigc)** | 🚀 **[Quick Start](https://jmanhype.github.io/vibe-aigc/getting-started/quickstart/)** | 📖 **[API Reference](https://jmanhype.github.io/vibe-aigc/api/models/)**
 
-Vibe AIGC introduces a paradigm shift from model-centric to agentic orchestration for content generation. Instead of traditional prompt engineering, users provide a **Vibe** — a high-level representation encompassing aesthetic preferences, functional logic, and intent.
+---
 
-## Key Features
+## What is Vibe AIGC?
 
-- 🎯 **Vibe-based Planning** — Decompose high-level intent into executable workflows
-- ⚡ **Parallel Execution** — Independent nodes execute concurrently for faster results
-- 🔄 **Adaptive Replanning** — Automatic workflow adaptation based on execution feedback
-- 💾 **Checkpoint/Resume** — Save and restore workflow state for long-running tasks
+Vibe AIGC bridges the **Intent-Execution Gap** in AI content generation. Instead of prompt engineering, you provide a **Vibe** — a high-level representation of your creative intent — and the system automatically decomposes it into executable workflows.
+
+```python
+from vibe_aigc import MetaPlanner, Vibe
+
+# Express your intent
+vibe = Vibe(
+    description="Create a cinematic sci-fi trailer",
+    style="dark, atmospheric, Blade Runner aesthetic",
+    constraints=["under 60 seconds", "no dialogue"]
+)
+
+# Let the Meta-Planner handle the rest
+planner = MetaPlanner()
+result = await planner.execute(vibe)
+```
+
+## Features
+
+- 🎯 **Vibe-based Planning** — High-level intent → executable workflows
+- ⚡ **Parallel Execution** — Independent nodes run concurrently
+- 🔄 **Adaptive Replanning** — Automatic recovery from failures
+- 💾 **Checkpoint/Resume** — Save and restore workflow state
 - 📊 **Progress Tracking** — Real-time callbacks and visualization
-- 🎨 **Workflow Visualization** — ASCII and Mermaid diagram generation
+- 🎨 **Workflow Visualization** — ASCII and Mermaid diagrams
+
+## Installation
+
+```bash
+pip install vibe-aigc
+```
+
+## CLI Usage
+
+```bash
+# Generate a workflow plan
+vibe-aigc plan "Create a blog post about AI" --style "informative" --format ascii
+
+# Execute a vibe
+vibe-aigc execute "Design a landing page" --visualize --checkpoint
+
+# Manage checkpoints
+vibe-aigc checkpoints --list
+```
+
+## Quick Example
+
+```python
+import asyncio
+from vibe_aigc import Vibe, MetaPlanner
+
+async def main():
+    vibe = Vibe(
+        description="Write a blog post about AI agents",
+        style="informative, engaging",
+        constraints=["under 1000 words"]
+    )
+    
+    planner = MetaPlanner()
+    result = await planner.execute_with_visualization(vibe)
+    
+    print(f"Status: {result.get_summary()['status']}")
+
+asyncio.run(main())
+```
 
 ## Architecture
 
@@ -59,128 +126,21 @@ User Vibe → MetaPlanner → Agentic Pipeline → Execution → Result
      └──── Feedback Loop ────────┘
 ```
 
-## Installation
+## Documentation
 
-```bash
-pip install -e .
-```
-
-## Quick Start
-
-```python
-from vibe_aigc import MetaPlanner, Vibe
-
-# Define your vibe
-vibe = Vibe(
-    description="Create a cinematic sci-fi scene",
-    style="dark, atmospheric",
-    constraints=["no violence", "PG-13"]
-)
-
-# Plan and execute
-planner = MetaPlanner()
-result = await planner.execute(vibe)
-```
-
-## Advanced Usage
-
-### With Progress Callbacks
-
-```python
-def on_progress(event):
-    print(f"[{event.event_type}] {event.message}")
-
-planner = MetaPlanner(progress_callback=on_progress)
-result = await planner.execute_with_visualization(vibe)
-```
-
-### With Checkpoint/Resume
-
-```python
-# Enable automatic checkpointing
-planner = MetaPlanner(checkpoint_interval=5)
-
-# Execute with checkpoints
-result = await planner.execute_with_resume(vibe)
-
-# Resume from a checkpoint
-checkpoints = planner.list_checkpoints()
-result = await planner.execute_with_resume(vibe, checkpoint_id=checkpoints[0]["checkpoint_id"])
-```
-
-### With Adaptive Replanning
-
-```python
-# Automatically adapt workflow on failures
-result = await planner.execute_with_adaptation(vibe)
-
-# Check adaptation history
-print(result["adaptation_info"])
-```
-
-## API Reference
-
-### Vibe
-
-```python
-Vibe(
-    description: str,      # What you want to create
-    style: str = None,     # Aesthetic preferences
-    constraints: list = [],# Boundaries and requirements
-    domain: str = None,    # Content domain
-    metadata: dict = {}    # Additional context
-)
-```
-
-### MetaPlanner
-
-| Method | Description |
-|--------|-------------|
-| `plan(vibe)` | Generate workflow plan without execution |
-| `execute(vibe)` | Plan and execute workflow |
-| `execute_with_adaptation(vibe)` | Execute with automatic replanning |
-| `execute_with_visualization(vibe)` | Execute with progress visualization |
-| `execute_with_resume(vibe, checkpoint_id)` | Execute with checkpoint support |
-| `list_checkpoints()` | List available checkpoints |
-| `get_checkpoint(id)` | Load a specific checkpoint |
-| `delete_checkpoint(id)` | Remove a checkpoint |
-
-## Testing
-
-```bash
-# Run all tests
-pytest -v
-
-# Run specific test file
-pytest tests/test_planner.py -v
-
-# Run with coverage
-pytest --cov=vibe_aigc
-```
-
-## Project Structure
-
-```
-vibe_aigc/
-├── __init__.py        # Package exports
-├── models.py          # Vibe, WorkflowPlan, WorkflowNode
-├── llm.py             # LLM client for plan generation
-├── planner.py         # MetaPlanner orchestration
-├── executor.py        # Workflow execution engine
-├── persistence.py     # Checkpoint management
-└── visualization.py   # Diagram generation
-```
+- [Installation Guide](https://jmanhype.github.io/vibe-aigc/getting-started/installation/)
+- [Quick Start Tutorial](https://jmanhype.github.io/vibe-aigc/getting-started/quickstart/)
+- [Core Concepts](https://jmanhype.github.io/vibe-aigc/guide/concepts/)
+- [API Reference](https://jmanhype.github.io/vibe-aigc/api/models/)
+- [Examples](https://jmanhype.github.io/vibe-aigc/examples/)
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests
-4. Submit a pull request
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
 
 ## Citation
 

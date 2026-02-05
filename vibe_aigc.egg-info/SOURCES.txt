@@ -18,6 +18,7 @@ tests/test_progress_callbacks.py
 tests/test_visualization.py
 tests/test_workflow_resume.py
 vibe_aigc/__init__.py
+vibe_aigc/cli.py
 vibe_aigc/executor.py
 vibe_aigc/llm.py
 vibe_aigc/models.py
@@ -27,5 +28,6 @@ vibe_aigc/visualization.py
 vibe_aigc.egg-info/PKG-INFO
 vibe_aigc.egg-info/SOURCES.txt
 vibe_aigc.egg-info/dependency_links.txt
+vibe_aigc.egg-info/entry_points.txt
 vibe_aigc.egg-info/requires.txt
 vibe_aigc.egg-info/top_level.txt

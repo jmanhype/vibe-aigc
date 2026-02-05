@@ -5,6 +5,24 @@ All notable changes to Vibe AIGC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-02-05
+
+### Added
+
+- **CLI Tool** - `vibe-aigc` command with plan/execute/checkpoints/resume subcommands
+- **Docker Support** - Dockerfile for containerized deployments
+- **Documentation Site** - Full MkDocs site with guides and API reference
+- **Landing Page** - Custom homepage at jmanhype.github.io/vibe-aigc
+- **Integration Examples** - OpenAI integration and custom executor examples
+- **Security Policy** - SECURITY.md for vulnerability reporting
+- **Code of Conduct** - CODE_OF_CONDUCT.md for community guidelines
+- **Project Logo** - SVG logo for branding
+
+### Changed
+
+- CI now includes test coverage reporting (Codecov)
+- README updated with CLI usage and coverage badge
+
 ## [0.1.0] - 2026-02-05
 
 ### Added
