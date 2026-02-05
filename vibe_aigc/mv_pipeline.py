@@ -10,10 +10,12 @@ a complete music video with:
 
 import asyncio
 import json
+import aiohttp
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime
+from enum import Enum
 
 from .models import Vibe
 from .knowledge import KnowledgeBase
@@ -22,6 +24,15 @@ from .video import AnimateDiffBackend
 from .character import CharacterBank, CharacterReference, IPAdapterBackend
 from .audio import MusicGenBackend, RiffusionBackend
 from .tools import LLMTool
+from .model_registry import ModelRegistry, ModelCapability
+from .vlm_feedback import VLMFeedback, create_vlm_feedback
+
+
+class VideoBackend(Enum):
+    """Available video generation backends."""
+    ANIMATEDIFF = "animatediff"
+    LTX_VIDEO = "ltx_video"
+    AUTO = "auto"  # Let ModelRegistry decide
 
 
 @dataclass
@@ -98,15 +109,27 @@ class MVPipeline:
         self,
         llm_config: Optional[Dict[str, Any]] = None,
         comfyui_config: Optional[ComfyUIConfig] = None,
-        music_api_token: Optional[str] = None
+        comfyui_url: str = "http://127.0.0.1:8188",
+        music_api_token: Optional[str] = None,
+        video_backend: VideoBackend = VideoBackend.AUTO,
+        enable_vlm_feedback: bool = True
     ):
         self.knowledge_base = KnowledgeBase()
         self.comfyui_config = comfyui_config or ComfyUIConfig()
+        self.comfyui_url = comfyui_url
         self.character_bank = CharacterBank()
+        self.video_backend_type = video_backend
+        
+        # Model Registry - knows what's available
+        self.model_registry = ModelRegistry(comfyui_url=comfyui_url)
+        self._models_initialized = False
+        
+        # VLM Feedback - analyzes outputs
+        self.vlm_feedback = create_vlm_feedback() if enable_vlm_feedback else None
         
         # Backends
         self.image_backend = ComfyUIBackend(self.comfyui_config)
-        self.video_backend = AnimateDiffBackend(self.comfyui_config)
+        self.animatediff_backend = AnimateDiffBackend(self.comfyui_config)
         self.character_backend = IPAdapterBackend(self.comfyui_config)
         
         # LLM for storyboarding
@@ -117,6 +140,15 @@ class MVPipeline:
         
         # Music generation
         self.music_backend = MusicGenBackend(music_api_token)
+    
+    async def initialize(self) -> None:
+        """Initialize the pipeline - scan available models."""
+        await self.model_registry.refresh()
+        self._models_initialized = True
+        
+        # Log capabilities
+        caps = self.model_registry.get_capabilities()
+        print(f"MV Pipeline initialized with capabilities: {[c.value for c in caps]}")
     
     async def generate_storyboard(
         self,
@@ -250,35 +282,144 @@ action shots, and emotional beats. Use the style consistently."""
     async def generate_shot(
         self,
         shot: Shot,
-        character_ref: Optional[str] = None
+        character_ref: Optional[str] = None,
+        use_vlm_feedback: bool = True
     ) -> Shot:
-        """Generate a single shot video."""
+        """Generate a single shot video with VLM quality feedback."""
         
         # If character consistency needed and reference provided
         if character_ref and shot.character:
-            # First generate a consistent character image
             char_result = await self.character_backend.generate_with_reference(
                 prompt=shot.prompt,
                 reference_image=character_ref,
                 negative_prompt=shot.negative_prompt,
                 steps=20
             )
-            # Use that as reference for video
-            # (For now, just generate video directly)
         
-        # Generate video with AnimateDiff
-        result = await self.video_backend.generate_video(
-            prompt=shot.prompt,
-            negative_prompt=shot.negative_prompt,
-            frames=shot.frames,
-            fps=8,
-            steps=15
-        )
+        # Select video backend based on available models
+        use_ltx = False
+        if self.video_backend_type == VideoBackend.LTX_VIDEO:
+            use_ltx = True
+        elif self.video_backend_type == VideoBackend.AUTO and self._models_initialized:
+            # Check if LTX Video is available and better
+            ltx_model = self.model_registry.get_best_for(ModelCapability.TEXT_TO_VIDEO)
+            if ltx_model and "ltx" in ltx_model.filename.lower():
+                use_ltx = True
         
-        if result.success and result.images:
-            shot.video_url = result.images[0]
+        # Generate with selected backend
+        max_attempts = 3 if (use_vlm_feedback and self.vlm_feedback) else 1
+        current_prompt = shot.prompt
+        
+        for attempt in range(max_attempts):
+            if use_ltx:
+                result = await self._generate_ltx_video(
+                    prompt=current_prompt,
+                    negative_prompt=shot.negative_prompt,
+                    frames=shot.frames
+                )
+            else:
+                result = await self.animatediff_backend.generate_video(
+                    prompt=current_prompt,
+                    negative_prompt=shot.negative_prompt,
+                    frames=shot.frames,
+                    fps=8,
+                    steps=15
+                )
+            
+            if result.success and result.images:
+                shot.video_url = result.images[0]
+                
+                # VLM feedback loop
+                if use_vlm_feedback and self.vlm_feedback and attempt < max_attempts - 1:
+                    video_path = Path(shot.video_url) if shot.video_url else None
+                    if video_path and video_path.exists():
+                        feedback = self.vlm_feedback.analyze_media(video_path, current_prompt)
+                        
+                        if feedback.quality_score >= self.vlm_feedback.quality_threshold:
+                            # Good enough, stop
+                            break
+                        else:
+                            # Improve prompt for next attempt
+                            current_prompt = self.vlm_feedback.suggest_improvements(
+                                feedback, current_prompt
+                            )
+                else:
+                    break
         
         return shot
+    
+    async def _generate_ltx_video(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        frames: int = 17,
+        width: int = 512,
+        height: int = 320
+    ) -> Any:
+        """Generate video using LTX Video 2B."""
+        
+        # Build LTX Video workflow
+        workflow = {
+            '1': {'class_type': 'UNETLoader', 
+                  'inputs': {'unet_name': 'ltxv-2b-0.9.8-distilled-fp8.safetensors', 'weight_dtype': 'fp8_e4m3fn'}},
+            '2': {'class_type': 'CLIPLoaderGGUF',
+                  'inputs': {'clip_name': 't5-v1_1-xxl-encoder-Q4_K_M.gguf', 'type': 'ltxv'}},
+            '3': {'class_type': 'VAELoader',
+                  'inputs': {'vae_name': 'LTX2_video_vae_bf16.safetensors'}},
+            '4': {'class_type': 'CLIPTextEncode',
+                  'inputs': {'clip': ['2', 0], 'text': prompt}},
+            '5': {'class_type': 'CLIPTextEncode',
+                  'inputs': {'clip': ['2', 0], 'text': negative_prompt or 'blurry, static, low quality'}},
+            '6': {'class_type': 'LTXVConditioning',
+                  'inputs': {'positive': ['4', 0], 'negative': ['5', 0], 'frame_rate': 24}},
+            '7': {'class_type': 'EmptyLTXVLatentVideo',
+                  'inputs': {'width': width, 'height': height, 'length': frames, 'batch_size': 1}},
+            '8': {'class_type': 'ModelSamplingLTXV',
+                  'inputs': {'model': ['1', 0], 'max_shift': 2.05, 'base_shift': 0.95}},
+            '9': {'class_type': 'LTXVScheduler',
+                  'inputs': {'steps': 25, 'max_shift': 2.05, 'base_shift': 0.95, 'stretch': True, 'terminal': 0.1}},
+            '10': {'class_type': 'SamplerCustomAdvanced',
+                   'inputs': {'noise': ['11', 0], 'guider': ['12', 0], 'sampler': ['13', 0], 'sigmas': ['9', 0], 'latent_image': ['7', 0]}},
+            '11': {'class_type': 'RandomNoise', 'inputs': {'noise_seed': hash(prompt) % 2**32}},
+            '12': {'class_type': 'BasicGuider', 'inputs': {'model': ['8', 0], 'conditioning': ['6', 0]}},
+            '13': {'class_type': 'KSamplerSelect', 'inputs': {'sampler_name': 'euler'}},
+            '14': {'class_type': 'VAEDecode', 'inputs': {'samples': ['10', 0], 'vae': ['3', 0]}},
+            '15': {'class_type': 'SaveAnimatedWEBP',
+                   'inputs': {'images': ['14', 0], 'filename_prefix': 'mv_shot', 'fps': 24.0, 'lossless': False, 'quality': 85, 'method': 'default'}}
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            # Queue the workflow
+            async with session.post(
+                f"{self.comfyui_url}/prompt",
+                json={"prompt": workflow}
+            ) as resp:
+                result = await resp.json()
+                if "error" in result:
+                    return type('Result', (), {'success': False, 'images': [], 'error': str(result)})()
+                prompt_id = result["prompt_id"]
+            
+            # Wait for completion
+            for _ in range(180):  # 6 min timeout
+                await asyncio.sleep(2)
+                async with session.get(f"{self.comfyui_url}/history/{prompt_id}") as resp:
+                    hist = await resp.json()
+                    if prompt_id in hist:
+                        status = hist[prompt_id].get("status", {}).get("status_str")
+                        if status == "success":
+                            # Extract output
+                            for nid, out in hist[prompt_id].get("outputs", {}).items():
+                                if "images" in out:
+                                    filename = out["images"][0]["filename"]
+                                    return type('Result', (), {
+                                        'success': True,
+                                        'images': [f"{self.comfyui_url}/view?filename={filename}"]
+                                    })()
+                        elif status == "error":
+                            return type('Result', (), {'success': False, 'images': []})()
+            
+            return type('Result', (), {'success': False, 'images': [], 'error': 'Timeout'})()
+    
     
     async def generate_mv(
         self,
@@ -286,9 +427,15 @@ action shots, and emotional beats. Use the style consistently."""
         num_shots: int = 8,
         target_duration: float = 30.0,
         generate_music: bool = True,
-        parallel_shots: int = 2
+        parallel_shots: int = 1,  # Default to 1 for VRAM efficiency
+        use_vlm_feedback: bool = True
     ) -> Storyboard:
         """Generate a complete music video.
+        
+        This is the paper's MV Pipeline with:
+        - Model Registry for auto-selecting best models
+        - VLM feedback for quality improvement
+        - LTX Video for state-of-the-art video generation
         
         Args:
             vibe: The creative vibe/intent
@@ -296,27 +443,45 @@ action shots, and emotional beats. Use the style consistently."""
             target_duration: Target video length in seconds
             generate_music: Whether to generate background music
             parallel_shots: How many shots to generate in parallel
+            use_vlm_feedback: Enable VLM quality feedback loop
             
         Returns:
             Complete storyboard with all generated content
         """
+        # Initialize models if not done
+        if not self._models_initialized:
+            await self.initialize()
+        
+        print(f"Generating MV: {vibe.description}")
+        print(f"Hardware: {self.model_registry.hardware.gpu_name} ({self.model_registry.hardware.vram_gb}GB)")
+        
         # Step 1: Generate storyboard
+        print("Step 1: Generating storyboard...")
         storyboard = await self.generate_storyboard(
             vibe=vibe,
             num_shots=num_shots,
             target_duration=target_duration
         )
+        print(f"  Created {len(storyboard.shots)} shots")
         
         # Step 2: Generate music (if enabled)
         if generate_music:
+            print("Step 2: Generating music...")
             await self.generate_music(storyboard, target_duration)
         
-        # Step 3: Generate video shots
-        # Process in batches for memory efficiency
-        for i in range(0, len(storyboard.shots), parallel_shots):
-            batch = storyboard.shots[i:i + parallel_shots]
-            tasks = [self.generate_shot(shot) for shot in batch]
-            await asyncio.gather(*tasks)
+        # Step 3: Generate video shots with VLM feedback
+        print("Step 3: Generating video shots...")
+        for i, shot in enumerate(storyboard.shots):
+            print(f"  Shot {i+1}/{len(storyboard.shots)}: {shot.description[:40]}...")
+            await self.generate_shot(shot, use_vlm_feedback=use_vlm_feedback)
+            if shot.video_url:
+                print(f"    OK: {shot.video_url}")
+            else:
+                print(f"    FAILED")
+        
+        # Step 4: Report results
+        success_count = sum(1 for s in storyboard.shots if s.video_url)
+        print(f"\nMV Complete: {success_count}/{len(storyboard.shots)} shots generated")
         
         return storyboard
     
