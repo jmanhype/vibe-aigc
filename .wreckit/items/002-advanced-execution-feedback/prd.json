@@ -195,7 +195,7 @@
         "Resume works correctly with parallel execution and dependencies"
       ],
       "priority": 4,
-      "status": "pending",
+      "status": "done",
       "notes": "Core resume functionality. Must perfectly restore execution state and continue safely."
     },
     {
@@ -210,7 +210,7 @@
         "Failed checkpoint saves don't interrupt workflow execution"
       ],
       "priority": 4,
-      "status": "pending",
+      "status": "done",
       "notes": "Automated checkpoint management. Balances data safety with performance impact."
     },
     {
@@ -225,7 +225,7 @@
         "Error handling provides clear guidance for persistence issues"
       ],
       "priority": 4,
-      "status": "pending",
+      "status": "done",
       "notes": "User-friendly persistence interface. Makes checkpoint/resume functionality easily accessible through familiar MetaPlanner API."
     }
   ]
