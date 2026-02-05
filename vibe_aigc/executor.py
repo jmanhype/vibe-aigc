@@ -1,7 +1,7 @@
 """Workflow execution engine for running WorkflowPlans."""
 
 import asyncio
-from typing import Any, Dict, List, Set, Optional
+from typing import Any, Dict, List, Set, Optional, Callable
 from datetime import datetime
 from enum import Enum
 import time
@@ -17,6 +17,32 @@ class ExecutionStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class ProgressEventType(str, Enum):
+    """Types of progress events."""
+    WORKFLOW_STARTED = "workflow_started"
+    WORKFLOW_COMPLETED = "workflow_completed"
+    NODE_STARTED = "node_started"
+    NODE_COMPLETED = "node_completed"
+    NODE_FAILED = "node_failed"
+    GROUP_STARTED = "group_started"
+    GROUP_COMPLETED = "group_completed"
+
+
+class ProgressEvent:
+    """Progress event data."""
+    def __init__(self, event_type: ProgressEventType,
+                 node_id: Optional[str] = None,
+                 progress_percent: float = 0.0,
+                 message: str = "",
+                 metadata: Dict[str, Any] = None):
+        self.event_type = event_type
+        self.node_id = node_id
+        self.progress_percent = progress_percent
+        self.message = message
+        self.metadata = metadata or {}
+        self.timestamp = datetime.now().isoformat()
 
 
 class NodeResult:
@@ -106,9 +132,9 @@ class ExecutionResult:
 
 
 class WorkflowExecutor:
-    """Basic execution engine for WorkflowPlans."""
+    """Basic execution engine for WorkflowPlans with progress callbacks."""
 
-    def __init__(self):
+    def __init__(self, progress_callback: Optional[Callable[[ProgressEvent], None]] = None):
         self.node_handlers = {
             WorkflowNodeType.ANALYZE: self._execute_analyze,
             WorkflowNodeType.GENERATE: self._execute_generate,
@@ -116,9 +142,10 @@ class WorkflowExecutor:
             WorkflowNodeType.VALIDATE: self._execute_validate,
             WorkflowNodeType.COMPOSITE: self._execute_composite
         }
+        self.progress_callback = progress_callback
 
     async def execute_plan(self, plan: WorkflowPlan) -> ExecutionResult:
-        """Execute a complete WorkflowPlan with parallel execution of independent nodes."""
+        """Execute a complete WorkflowPlan with parallel execution and progress tracking."""
 
         result = ExecutionResult(plan.id)
         result.status = ExecutionStatus.RUNNING
@@ -126,19 +153,38 @@ class WorkflowExecutor:
         start_time = time.time()
         execution_failed = False
 
+        # Emit workflow started event
+        self._emit_progress(ProgressEventType.WORKFLOW_STARTED,
+                          message=f"Starting workflow: {plan.id}")
+
         try:
             # Group independent root nodes for parallel execution
             parallel_groups = self._build_parallel_execution_groups(plan.root_nodes, result)
             result.execution_groups = [[node.id for node in group] for group in parallel_groups]
 
+            # Calculate progress tracking
+            total_nodes = self._count_total_nodes(plan.root_nodes)
+            completed_nodes = 0
+
             # Execute each parallel group in sequence, nodes within groups in parallel
-            for group in parallel_groups:
+            for group_idx, group in enumerate(parallel_groups):
+                self._emit_progress(ProgressEventType.GROUP_STARTED,
+                                  message=f"Starting parallel group {group_idx + 1}/{len(parallel_groups)}",
+                                  metadata={"group_size": len(group), "group_nodes": [n.id for n in group]})
+
                 group_tasks = [
-                    self._execute_node_tree(node, result)
+                    self._execute_node_tree_with_progress(node, result, total_nodes, completed_nodes)
                     for node in group
                 ]
                 try:
                     await asyncio.gather(*group_tasks, return_exceptions=True)
+                    completed_nodes += len(group)
+
+                    progress_percent = (completed_nodes / total_nodes) * 100 if total_nodes > 0 else 100
+                    self._emit_progress(ProgressEventType.GROUP_COMPLETED,
+                                      progress_percent=progress_percent,
+                                      message=f"Completed group {group_idx + 1}/{len(parallel_groups)}")
+
                 except Exception as e:
                     execution_failed = True
                     # Mark failed nodes, continue with remaining groups
@@ -149,8 +195,14 @@ class WorkflowExecutor:
             # Determine final status based on whether any nodes failed
             if execution_failed or any(r.status == ExecutionStatus.FAILED for r in result.node_results.values()):
                 result.status = ExecutionStatus.FAILED
+                self._emit_progress(ProgressEventType.WORKFLOW_COMPLETED,
+                                  progress_percent=100.0,
+                                  message=f"Workflow failed: {result.plan_id}")
             else:
                 result.status = ExecutionStatus.COMPLETED
+                self._emit_progress(ProgressEventType.WORKFLOW_COMPLETED,
+                                  progress_percent=100.0,
+                                  message=f"Workflow completed: {result.plan_id}")
 
             result.completed_at = datetime.now().isoformat()
 
@@ -158,6 +210,10 @@ class WorkflowExecutor:
             # Unexpected error during execution setup
             result.status = ExecutionStatus.FAILED
             result.completed_at = datetime.now().isoformat()
+
+            self._emit_progress(ProgressEventType.WORKFLOW_COMPLETED,
+                              progress_percent=100.0,
+                              message=f"Workflow failed with error: {str(e)}")
 
             # Add error result for any nodes that haven't been executed
             for node in plan.root_nodes:
@@ -169,72 +225,6 @@ class WorkflowExecutor:
 
         return result
 
-    async def _execute_node_tree(self, node: WorkflowNode, result: ExecutionResult):
-        """Execute a node and its children, respecting dependencies."""
-
-        # Check if dependencies are satisfied
-        if not self._dependencies_satisfied(node, result):
-            result.add_node_result(NodeResult(
-                node.id, ExecutionStatus.SKIPPED,
-                error="Dependencies not satisfied"
-            ))
-            return
-
-        start_time = asyncio.get_event_loop().time()
-
-        try:
-            # Execute the node
-            handler = self.node_handlers.get(node.type, self._execute_default)
-            node_result = await handler(node)
-
-            duration = asyncio.get_event_loop().time() - start_time
-            result.add_node_result(NodeResult(
-                node.id, ExecutionStatus.COMPLETED,
-                result=node_result, duration=duration
-            ))
-
-            # Collect execution feedback
-            feedback = self._analyze_node_execution(node, node_result, duration)
-            result.add_feedback(node.id, feedback)
-
-            # Check for replanning triggers
-            if self._should_suggest_replan(node, node_result, feedback):
-                result.suggest_replan({
-                    "node_id": node.id,
-                    "reason": feedback.get("replan_reason", "low_quality_output"),
-                    "suggested_changes": feedback.get("optimization_suggestions", [])
-                })
-
-            # Execute children in parallel groups
-            if node.children:
-                child_groups = self._build_parallel_execution_groups(node.children, result)
-                for group in child_groups:
-                    child_tasks = [
-                        self._execute_node_tree(child, result)
-                        for child in group
-                    ]
-                    await asyncio.gather(*child_tasks, return_exceptions=True)
-
-        except Exception as e:
-            duration = asyncio.get_event_loop().time() - start_time
-            result.add_node_result(NodeResult(
-                node.id, ExecutionStatus.FAILED,
-                error=str(e), duration=duration
-            ))
-
-            # Enhanced error feedback
-            error_feedback = self._analyze_execution_error(node, e, duration)
-            result.add_feedback(node.id, error_feedback)
-
-            if error_feedback.get("replannable", False):
-                result.suggest_replan({
-                    "node_id": node.id,
-                    "error": str(e),
-                    "replan_reason": "execution_failure",
-                    "suggested_changes": error_feedback.get("suggested_changes", [])
-                })
-
-            raise
 
     def _dependencies_satisfied(self, node: WorkflowNode, result: ExecutionResult) -> bool:
         """Check if all dependencies for a node have completed successfully."""
@@ -304,6 +294,113 @@ class WorkflowExecutor:
                 processed_nodes.add(node_id)
 
         return groups
+
+    def _count_total_nodes(self, nodes: List[WorkflowNode]) -> int:
+        """Count total number of nodes in the workflow tree."""
+        total = 0
+        for node in nodes:
+            total += 1  # Count this node
+            total += self._count_total_nodes(node.children)  # Count children recursively
+        return total
+
+    async def _execute_node_tree_with_progress(self, node: WorkflowNode,
+                                             result: ExecutionResult,
+                                             total_nodes: int,
+                                             completed_base: int):
+        """Execute node tree with progress reporting."""
+
+        # Check dependencies
+        if not self._dependencies_satisfied(node, result):
+            result.add_node_result(NodeResult(node.id, ExecutionStatus.SKIPPED,
+                                            error="Dependencies not satisfied"))
+            return
+
+        # Emit node started
+        self._emit_progress(ProgressEventType.NODE_STARTED,
+                          node_id=node.id,
+                          message=f"Starting: {node.description}")
+
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            # Execute the node
+            handler = self.node_handlers.get(node.type, self._execute_default)
+            node_result = await handler(node)
+
+            duration = asyncio.get_event_loop().time() - start_time
+            result.add_node_result(NodeResult(
+                node.id, ExecutionStatus.COMPLETED,
+                result=node_result, duration=duration
+            ))
+
+            # Emit node completed
+            self._emit_progress(ProgressEventType.NODE_COMPLETED,
+                              node_id=node.id,
+                              message=f"Completed: {node.description}",
+                              metadata={"duration": duration, "result_preview": str(node_result)[:100]})
+
+            # Collect execution feedback
+            feedback = self._analyze_node_execution(node, node_result, duration)
+            result.add_feedback(node.id, feedback)
+
+            # Check for replanning triggers
+            if self._should_suggest_replan(node, node_result, feedback):
+                result.suggest_replan({
+                    "node_id": node.id,
+                    "reason": feedback.get("replan_reason", "low_quality_output"),
+                    "suggested_changes": feedback.get("optimization_suggestions", [])
+                })
+
+            # Execute children with progress tracking
+            if node.children:
+                child_groups = self._build_parallel_execution_groups(node.children, result)
+                for group in child_groups:
+                    child_tasks = [
+                        self._execute_node_tree_with_progress(child, result, total_nodes, completed_base)
+                        for child in group
+                    ]
+                    await asyncio.gather(*child_tasks, return_exceptions=True)
+
+        except Exception as e:
+            duration = asyncio.get_event_loop().time() - start_time
+            result.add_node_result(NodeResult(
+                node.id, ExecutionStatus.FAILED,
+                error=str(e), duration=duration
+            ))
+
+            # Emit node failed
+            self._emit_progress(ProgressEventType.NODE_FAILED,
+                              node_id=node.id,
+                              message=f"Failed: {node.description} - {str(e)}",
+                              metadata={"duration": duration, "error": str(e)})
+
+            # Enhanced error feedback
+            error_feedback = self._analyze_execution_error(node, e, duration)
+            result.add_feedback(node.id, error_feedback)
+
+            if error_feedback.get("replannable", False):
+                result.suggest_replan({
+                    "node_id": node.id,
+                    "error": str(e),
+                    "replan_reason": "execution_failure",
+                    "suggested_changes": error_feedback.get("suggested_changes", [])
+                })
+
+            raise
+
+    def _emit_progress(self, event_type: ProgressEventType,
+                      node_id: Optional[str] = None,
+                      progress_percent: float = 0.0,
+                      message: str = "",
+                      metadata: Dict[str, Any] = None):
+        """Emit progress event if callback is configured."""
+        if self.progress_callback:
+            event = ProgressEvent(event_type, node_id, progress_percent, message, metadata)
+            try:
+                self.progress_callback(event)
+            except Exception as e:
+                # Don't let callback failures stop execution
+                print(f"Progress callback error: {e}")
 
     def _analyze_node_execution(self, node: WorkflowNode, node_result: Any, duration: float) -> Dict[str, Any]:
         """Analyze node execution result for feedback."""
