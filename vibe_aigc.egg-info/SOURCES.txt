@@ -25,6 +25,7 @@ vibe_aigc/__init__.py
 vibe_aigc/agents.py
 vibe_aigc/assets.py
 vibe_aigc/cli.py
+vibe_aigc/comfyui.py
 vibe_aigc/executor.py
 vibe_aigc/knowledge.py
 vibe_aigc/llm.py
