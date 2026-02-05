@@ -2,21 +2,23 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
 
 from .models import Vibe, WorkflowPlan, WorkflowNode, WorkflowNodeType
 from .llm import LLMClient, LLMConfig
-from .executor import WorkflowExecutor, ExecutionResult, ExecutionStatus
+from .executor import WorkflowExecutor, ExecutionResult, ExecutionStatus, ProgressEvent
+from .visualization import WorkflowVisualizer, VisualizationFormat
 
 
 class MetaPlanner:
     """Central system architect that decomposes Vibes into executable workflows with adaptive capabilities."""
 
-    def __init__(self, llm_config: Optional[LLMConfig] = None):
+    def __init__(self, llm_config: Optional[LLMConfig] = None, progress_callback: Optional[Callable[[ProgressEvent], None]] = None):
         self.llm_client = LLMClient(llm_config)
-        self.executor = WorkflowExecutor()
+        self.executor = WorkflowExecutor(progress_callback)
         self.max_replan_attempts = 3  # New configuration
         self.replan_history: List[Dict[str, Any]] = []  # New field for tracking adaptation history
+        self.progress_callback = progress_callback
 
     async def plan(self, vibe: Vibe) -> WorkflowPlan:
         """Generate a WorkflowPlan from a Vibe using LLM decomposition."""
@@ -361,3 +363,56 @@ class MetaPlanner:
         )
 
         return node_duration + children_duration
+    async def execute_with_visualization(self, vibe: Vibe,
+                                       show_progress: bool = True,
+                                       visualization_format: VisualizationFormat = VisualizationFormat.ASCII) -> Dict[str, Any]:
+        """Execute vibe with optional progress visualization."""
+
+        # Generate and execute plan
+        plan = await self.plan(vibe)
+
+        if show_progress and not self.progress_callback:
+            # Default progress visualization
+            def default_progress_callback(event: ProgressEvent):
+                print(f"[{event.timestamp}] {event.message}")
+                if event.progress_percent > 0:
+                    print(f"Progress: {event.progress_percent:.1f}%")
+
+            self.executor.progress_callback = default_progress_callback
+
+        execution_result = await self.executor.execute_plan(plan)
+
+        # Generate visualization
+        diagram = WorkflowVisualizer.generate_diagram(plan, execution_result, visualization_format)
+
+        # Enhanced result with visualization
+        result = self._format_result_with_visualization(execution_result, plan, diagram)
+        return result
+
+    def _format_result_with_visualization(self, execution_result: ExecutionResult,
+                                        plan: WorkflowPlan, diagram: str) -> Dict[str, Any]:
+        """Format result with visualization data."""
+
+        base_result = {
+            "status": execution_result.status.value,
+            "plan_id": execution_result.plan_id,
+            "vibe_description": plan.source_vibe.description,
+            "execution_summary": execution_result.get_summary(),
+            "node_results": {
+                node_id: {
+                    "status": result.status.value,
+                    "result": result.result,
+                    "error": result.error,
+                    "duration": result.duration
+                }
+                for node_id, result in execution_result.node_results.items()
+            },
+            "visualization": diagram
+        }
+
+        # Add parallel execution metrics if available
+        if hasattr(execution_result, 'parallel_efficiency'):
+            base_result["parallel_efficiency"] = execution_result.parallel_efficiency
+            base_result["execution_groups"] = execution_result.execution_groups
+
+        return base_result
