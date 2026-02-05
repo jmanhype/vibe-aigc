@@ -111,21 +111,129 @@ KNOWN_MODELS = {
 }
 
 
+@dataclass
+class HardwareSpec:
+    """Hardware specifications for model compatibility."""
+    gpu_name: str = "Unknown"
+    vram_gb: float = 8.0
+    ram_gb: float = 32.0
+    
+    @classmethod
+    def detect(cls) -> "HardwareSpec":
+        """Auto-detect hardware specs."""
+        try:
+            import subprocess
+            # Try nvidia-smi
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                parts = result.stdout.strip().split(", ")
+                if len(parts) >= 2:
+                    return cls(
+                        gpu_name=parts[0],
+                        vram_gb=float(parts[1]) / 1024,  # MB to GB
+                        ram_gb=32.0  # Default
+                    )
+        except:
+            pass
+        return cls()
+
+
+# Known state-of-the-art models for each capability
+SOTA_MODELS = {
+    ModelCapability.TEXT_TO_IMAGE: [
+        {
+            "name": "FLUX.1-dev",
+            "url": "https://huggingface.co/black-forest-labs/FLUX.1-dev",
+            "vram": 12.0,
+            "quality": 10,
+            "notes": "Best quality, needs 12GB+ VRAM"
+        },
+        {
+            "name": "SDXL",
+            "url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+            "vram": 8.0,
+            "quality": 8,
+            "notes": "Great quality, works on 8GB"
+        },
+        {
+            "name": "DreamShaper 8",
+            "url": "https://civitai.com/models/4384/dreamshaper",
+            "vram": 4.0,
+            "quality": 7,
+            "notes": "SD1.5, fast and reliable"
+        },
+    ],
+    ModelCapability.TEXT_TO_VIDEO: [
+        {
+            "name": "LTX Video 13B",
+            "url": "https://huggingface.co/Lightricks/LTX-Video",
+            "vram": 24.0,
+            "quality": 10,
+            "notes": "Best quality video, needs 24GB"
+        },
+        {
+            "name": "LTX Video 2B (FP8)",
+            "url": "https://huggingface.co/Lightricks/LTX-Video",
+            "vram": 6.0,
+            "quality": 9,
+            "notes": "State-of-the-art for 8GB cards"
+        },
+        {
+            "name": "Hunyuan Video",
+            "url": "https://huggingface.co/tencent/HunyuanVideo",
+            "vram": 12.0,
+            "quality": 9,
+            "notes": "Great quality, needs 12GB"
+        },
+        {
+            "name": "AnimateDiff",
+            "url": "https://huggingface.co/guoyww/animatediff",
+            "vram": 6.0,
+            "quality": 7,
+            "notes": "Fast, works on 8GB, SD1.5 based"
+        },
+    ],
+    ModelCapability.TEXT_TO_AUDIO: [
+        {
+            "name": "Stable Audio",
+            "url": "https://huggingface.co/stabilityai/stable-audio-open-1.0",
+            "vram": 8.0,
+            "quality": 9,
+            "notes": "High quality audio generation"
+        },
+        {
+            "name": "AudioLDM 2",
+            "url": "https://huggingface.co/cvssp/audioldm2",
+            "vram": 6.0,
+            "quality": 8,
+            "notes": "Good audio, works on 8GB"
+        },
+    ],
+}
+
+
 class ModelRegistry:
     """
     Dynamic registry of available models.
     
     Auto-detects what's installed in ComfyUI and categorizes
     by capability so the MetaPlanner can make informed decisions.
+    
+    Also knows about online models and hardware capabilities.
     """
     
     def __init__(
         self,
         comfyui_url: str = "http://127.0.0.1:8188",
-        perplexity_key: Optional[str] = None
+        perplexity_key: Optional[str] = None,
+        hardware: Optional[HardwareSpec] = None
     ):
         self.comfyui_url = comfyui_url
         self.perplexity_key = perplexity_key or os.environ.get("PERPLEXITY_API_KEY")
+        self.hardware = hardware or HardwareSpec.detect()
         self.models: Dict[str, ModelSpec] = {}
         self.capabilities: Dict[ModelCapability, List[ModelSpec]] = {
             cap: [] for cap in ModelCapability
@@ -343,7 +451,11 @@ class ModelRegistry:
     
     def summary(self) -> str:
         """Get a summary of available capabilities."""
-        lines = ["=== Model Registry ===", ""]
+        lines = [
+            "=== Model Registry ===",
+            f"Hardware: {self.hardware.gpu_name} ({self.hardware.vram_gb:.1f}GB VRAM)",
+            ""
+        ]
         
         for cap in ModelCapability:
             models = self.capabilities.get(cap, [])
@@ -354,6 +466,154 @@ class ModelRegistry:
                 if len(models) > 3:
                     lines.append(f"  ... and {len(models)-3} more")
                 lines.append("")
+        
+        return "\n".join(lines)
+    
+    def get_missing_capabilities(self) -> List[ModelCapability]:
+        """Get capabilities we DON'T have models for."""
+        return [
+            cap for cap in ModelCapability
+            if not self.capabilities.get(cap)
+        ]
+    
+    def get_recommended_models(
+        self,
+        capability: Optional[ModelCapability] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recommended models that would work on this hardware.
+        
+        Returns models from SOTA_MODELS that:
+        1. Fit in available VRAM
+        2. Are not already installed
+        3. Would improve quality
+        """
+        recommendations = []
+        vram = self.hardware.vram_gb
+        
+        caps_to_check = [capability] if capability else list(ModelCapability)
+        
+        for cap in caps_to_check:
+            sota = SOTA_MODELS.get(cap, [])
+            installed = self.capabilities.get(cap, [])
+            installed_quality = max((m.quality_tier for m in installed), default=0)
+            
+            for model in sota:
+                # Skip if won't fit
+                if model["vram"] > vram:
+                    continue
+                
+                # Skip if we already have something as good
+                if installed_quality >= model["quality"]:
+                    continue
+                
+                # Check if already installed (fuzzy match)
+                already_have = any(
+                    model["name"].lower().replace(" ", "") in m.name.lower().replace(" ", "")
+                    for m in installed
+                )
+                if already_have:
+                    continue
+                
+                recommendations.append({
+                    **model,
+                    "capability": cap.value,
+                    "would_improve": model["quality"] - installed_quality
+                })
+        
+        # Sort by quality improvement
+        recommendations.sort(key=lambda x: x["would_improve"], reverse=True)
+        return recommendations
+    
+    async def research_best_model(
+        self, 
+        task: str,
+        max_vram: Optional[float] = None
+    ) -> str:
+        """
+        Research the best model for a task using Perplexity.
+        
+        This is how the system learns about NEW state-of-the-art models.
+        """
+        if not self.perplexity_key:
+            return "No Perplexity API key - cannot research models"
+        
+        vram = max_vram or self.hardware.vram_gb
+        
+        import urllib.request
+        
+        query = f"""What is the best AI model for: {task}
+
+Requirements:
+- Must work with ComfyUI
+- Must fit in {vram}GB VRAM
+- Prefer quantized versions (FP8, GGUF) if available
+
+Give me:
+1. Model name
+2. HuggingFace or CivitAI link
+3. VRAM requirement
+4. How to install in ComfyUI"""
+
+        data = json.dumps({
+            "model": "sonar",
+            "messages": [{"role": "user", "content": query}]
+        }).encode()
+        
+        req = urllib.request.Request(
+            "https://api.perplexity.ai/chat/completions",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.perplexity_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                result = json.loads(resp.read().decode())
+                return result["choices"][0]["message"]["content"]
+        except Exception as e:
+            return f"Research failed: {e}"
+    
+    def full_report(self) -> str:
+        """Get a complete report of installed vs possible models."""
+        lines = [
+            "=" * 50,
+            "MODEL CAPABILITY REPORT",
+            "=" * 50,
+            "",
+            f"Hardware: {self.hardware.gpu_name}",
+            f"VRAM: {self.hardware.vram_gb:.1f} GB",
+            "",
+            "INSTALLED MODELS:",
+            "-" * 30,
+        ]
+        
+        for cap in ModelCapability:
+            models = self.capabilities.get(cap, [])
+            if models:
+                lines.append(f"\n{cap.value}:")
+                for m in models:
+                    lines.append(f"  [OK] {m.name} (Q{m.quality_tier})")
+        
+        # Missing capabilities
+        missing = self.get_missing_capabilities()
+        if missing:
+            lines.append("\n" + "-" * 30)
+            lines.append("MISSING CAPABILITIES:")
+            for cap in missing:
+                lines.append(f"  [--] {cap.value}")
+        
+        # Recommendations
+        recs = self.get_recommended_models()
+        if recs:
+            lines.append("\n" + "-" * 30)
+            lines.append("RECOMMENDED UPGRADES:")
+            for r in recs[:5]:
+                lines.append(f"  >> {r['name']} ({r['capability']})")
+                lines.append(f"     VRAM: {r['vram']}GB, Quality: {r['quality']}/10")
+                lines.append(f"     {r['url']}")
         
         return "\n".join(lines)
 
