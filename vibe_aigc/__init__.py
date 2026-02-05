@@ -102,6 +102,9 @@ __all__ = [
 # Model Registry - Auto-detect available models
 from .model_registry import ModelRegistry, ModelCapability, ModelFamily, ModelSpec
 
+# VLM Feedback - Visual quality assessment
+from .vlm_feedback import VLMFeedback, FeedbackResult, MediaType, create_vlm_feedback
+
 # ComfyUI backend for actual image generation
 from .comfyui import ComfyUIBackend, ComfyUIConfig, ComfyUIImageTool, create_comfyui_registry
 

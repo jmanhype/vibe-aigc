@@ -12,6 +12,7 @@ from .persistence import WorkflowCheckpoint, WorkflowPersistenceManager
 from .knowledge import KnowledgeBase, create_knowledge_base
 from .tools import ToolRegistry, create_default_registry
 from .model_registry import ModelRegistry, ModelCapability
+from .vlm_feedback import VLMFeedback, FeedbackResult, create_vlm_feedback
 
 
 class MetaPlanner:
@@ -48,6 +49,10 @@ class MetaPlanner:
         # Local enhancement: Dynamic model registry
         self.model_registry = model_registry or ModelRegistry(comfyui_url=comfyui_url)
         self._models_initialized = False
+        
+        # VLM feedback for visual quality assessment
+        self.vlm_feedback = create_vlm_feedback()
+        self._vlm_available = self.vlm_feedback.available
         
         self.executor = WorkflowExecutor(
             progress_callback, checkpoint_interval, checkpoint_dir,
@@ -411,6 +416,127 @@ class MetaPlanner:
                 "replan_history": self.replan_history,
                 "final_feedback": execution_result.feedback_data,
                 "final_suggestions": execution_result.replan_suggestions
+            }
+        }
+        return base_result
+    
+    async def execute_with_vlm_feedback(
+        self,
+        vibe: Vibe,
+        output_path: Optional[str] = None,
+        max_iterations: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Execute vibe with VLM-based quality feedback loop.
+        
+        This is the PAPER'S key contribution:
+        1. Generate content
+        2. Analyze with VLM
+        3. Improve based on feedback
+        4. Repeat until quality threshold
+        
+        Args:
+            vibe: The creative intent
+            output_path: Path to generated output (if already generated)
+            max_iterations: Maximum improvement iterations
+        
+        Returns:
+            Result with VLM feedback history
+        """
+        from pathlib import Path
+        
+        if not self._vlm_available:
+            # Fall back to regular execution
+            return await self.execute(vibe)
+        
+        feedback_history = []
+        current_prompt = vibe.description
+        
+        for iteration in range(max_iterations):
+            # Execute with current prompt
+            current_vibe = Vibe(
+                description=current_prompt,
+                style=vibe.style,
+                constraints=vibe.constraints,
+                domain=vibe.domain,
+                metadata={
+                    **vibe.metadata,
+                    "vlm_iteration": iteration + 1,
+                    "original_description": vibe.description
+                }
+            )
+            
+            try:
+                result = await self.execute(current_vibe)
+            except Exception as e:
+                feedback_history.append({
+                    "iteration": iteration + 1,
+                    "error": str(e),
+                    "prompt": current_prompt
+                })
+                continue
+            
+            # Find generated output
+            output_file = None
+            for node_id, node_result in result.get("node_results", {}).items():
+                if node_result.get("result"):
+                    res = node_result["result"]
+                    if isinstance(res, dict) and "path" in res:
+                        output_file = Path(res["path"])
+                    elif isinstance(res, str) and Path(res).exists():
+                        output_file = Path(res)
+            
+            if not output_file and output_path:
+                output_file = Path(output_path)
+            
+            if not output_file or not output_file.exists():
+                feedback_history.append({
+                    "iteration": iteration + 1,
+                    "error": "No output file found",
+                    "prompt": current_prompt
+                })
+                continue
+            
+            # Analyze with VLM
+            feedback = self.vlm_feedback.analyze_media(
+                output_file,
+                context=current_prompt
+            )
+            
+            feedback_history.append({
+                "iteration": iteration + 1,
+                "prompt": current_prompt,
+                "output": str(output_file),
+                "quality_score": feedback.quality_score,
+                "feedback": feedback.to_dict()
+            })
+            
+            # Check if quality is good enough
+            if feedback.quality_score >= self.vlm_feedback.quality_threshold:
+                return {
+                    **result,
+                    "vlm_feedback": {
+                        "final_quality": feedback.quality_score,
+                        "iterations": iteration + 1,
+                        "history": feedback_history,
+                        "status": "quality_achieved"
+                    }
+                }
+            
+            # Improve prompt for next iteration
+            if iteration < max_iterations - 1:
+                current_prompt = self.vlm_feedback.suggest_improvements(
+                    feedback, current_prompt
+                )
+        
+        # Max iterations reached
+        return {
+            **result,
+            "vlm_feedback": {
+                "final_quality": feedback.quality_score if 'feedback' in dir() else 0,
+                "iterations": max_iterations,
+                "history": feedback_history,
+                "status": "max_iterations_reached"
             }
         }
 
