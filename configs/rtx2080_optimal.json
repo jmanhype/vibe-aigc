@@ -79,9 +79,9 @@
   
   "recommended_models": {
     "sd15": [
-      "v1-5-pruned-emaonly.safetensors",
       "dreamshaper_8.safetensors",
-      "realisticVisionV60_v60.safetensors"
+      "realistic_vision_5.1.safetensors",
+      "v1-5-pruned-emaonly.safetensors"
     ],
     "sdxl": [
       "sd_xl_base_1.0.safetensors (with fp8)",
