@@ -5,6 +5,36 @@ All notable changes to Vibe AIGC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-02-05
+
+### Added
+
+- **Domain-Specific Expert Knowledge Base** (Paper Section 5.3)
+  - `KnowledgeBase` class for storing domain expertise
+  - Built-in knowledge for film, writing, design, and music domains
+  - Query interface for MetaPlanner intent understanding
+  - Maps creative concepts (e.g., "Hitchcockian suspense") to technical specs
+  - `to_prompt_context()` for LLM integration
+
+- **Atomic Tool Library** (Paper Section 5.4)
+  - `ToolRegistry` for discovering and managing tools
+  - `BaseTool` abstract class for custom tool implementations
+  - `LLMTool` - Text generation using OpenAI or Anthropic
+  - `TemplateTool` - Template-based content generation
+  - `CombineTool` - Merge outputs from parallel workflow branches
+
+- **Full Paper Architecture Integration**
+  - MetaPlanner now uses KnowledgeBase for intent understanding
+  - WorkflowExecutor integrates with ToolRegistry for real content generation
+  - Nodes can specify which tool to use via parameters
+  - Context flows between dependent nodes
+
+### Changed
+
+- MetaPlanner constructor accepts `knowledge_base` and `tool_registry` parameters
+- WorkflowExecutor uses tools when available, falls back to simulation
+- LLMClient.decompose_vibe accepts knowledge and tools context
+
 ## [0.1.1] - 2026-02-05
 
 ### Added

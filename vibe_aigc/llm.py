@@ -34,8 +34,24 @@ class LLMClient:
                 ) from e
             raise
 
-    async def decompose_vibe(self, vibe: Vibe) -> Dict[str, Any]:
-        """Decompose a Vibe into structured workflow plan data."""
+    async def decompose_vibe(
+        self, 
+        vibe: Vibe,
+        knowledge_context: Optional[str] = None,
+        tools_context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Decompose a Vibe into structured workflow plan data.
+        
+        This implements the paper's MetaPlanner (Section 5.2):
+        - Receives Vibe as input
+        - Uses domain knowledge for intent understanding
+        - Maps to available tools for execution
+        
+        Args:
+            vibe: The high-level creative intent
+            knowledge_context: Domain expertise for interpreting the vibe
+            tools_context: Available tools for execution
+        """
 
         system_prompt = """You are a Meta-Planner that decomposes high-level creative intent (Vibes) into executable workflow plans.
 
@@ -47,21 +63,47 @@ Respond with a JSON object containing:
   - id: unique task identifier
   - type: one of "analyze", "generate", "transform", "validate", "composite"
   - description: clear task description
-  - parameters: task-specific configuration
+  - parameters: task-specific configuration including:
+    - tool: name of the tool to use for execution (from available tools)
+    - tool_inputs: inputs to pass to the tool
   - dependencies: array of task IDs that must complete first
   - children: array of sub-tasks (same structure)
   - estimated_duration: estimated seconds to complete
 
+IMPORTANT: Each node should specify which tool to use for execution. Use the available tools provided.
 Focus on logical decomposition and clear dependencies. Keep tasks atomic and executable."""
 
-        user_prompt = f"""Decompose this Vibe into a workflow plan:
-
-Description: {vibe.description}
-Style: {vibe.style or 'Not specified'}
-Constraints: {', '.join(vibe.constraints) if vibe.constraints else 'None'}
-Domain: {vibe.domain or 'General'}
-
-Additional context: {vibe.metadata}"""
+        # Build user prompt with context
+        user_prompt_parts = [
+            f"Decompose this Vibe into a workflow plan:",
+            f"",
+            f"Description: {vibe.description}",
+            f"Style: {vibe.style or 'Not specified'}",
+            f"Constraints: {', '.join(vibe.constraints) if vibe.constraints else 'None'}",
+            f"Domain: {vibe.domain or 'General'}",
+            f"",
+            f"Additional context: {vibe.metadata}"
+        ]
+        
+        # Add knowledge context (Paper Section 5.3)
+        if knowledge_context:
+            user_prompt_parts.extend([
+                "",
+                "---",
+                knowledge_context
+            ])
+        
+        # Add tools context (Paper Section 5.4)
+        if tools_context:
+            user_prompt_parts.extend([
+                "",
+                "---",
+                tools_context,
+                "",
+                "Use the available tools above when specifying how each node should be executed."
+            ])
+        
+        user_prompt = "\n".join(user_prompt_parts)
 
         try:
             response = await self.client.chat.completions.create(

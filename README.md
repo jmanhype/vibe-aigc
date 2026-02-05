@@ -34,9 +34,35 @@ planner = MetaPlanner()
 result = await planner.execute(vibe)
 ```
 
+## Architecture (Paper Section 5)
+
+The implementation follows the paper's three-part architecture:
+
+| Component | Purpose | Module |
+|-----------|---------|--------|
+| **MetaPlanner** | Decomposes Vibes into workflows | `vibe_aigc.planner` |
+| **KnowledgeBase** | Domain expertise for intent understanding | `vibe_aigc.knowledge` |
+| **ToolRegistry** | Atomic tools for content generation | `vibe_aigc.tools` |
+
+```python
+from vibe_aigc import MetaPlanner, Vibe, create_knowledge_base, create_default_registry
+
+# The full architecture
+kb = create_knowledge_base()  # Film, writing, design, music knowledge
+tools = create_default_registry()  # LLM, templates, combine tools
+
+planner = MetaPlanner(knowledge_base=kb, tool_registry=tools)
+
+# Query knowledge for "Hitchcockian suspense" → technical specs
+result = kb.query("Hitchcockian suspense")
+# Returns: camera techniques, lighting specs, editing patterns
+```
+
 ## Features
 
 - 🎯 **Vibe-based Planning** — High-level intent → executable workflows
+- 🧠 **Domain Knowledge** — Built-in expertise for film, writing, design, music
+- 🔧 **Tool Library** — Pluggable tools for actual content generation
 - ⚡ **Parallel Execution** — Independent nodes run concurrently
 - 🔄 **Adaptive Replanning** — Automatic recovery from failures
 - 💾 **Checkpoint/Resume** — Save and restore workflow state

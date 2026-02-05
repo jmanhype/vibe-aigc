@@ -10,6 +10,7 @@ from .models import WorkflowPlan, WorkflowNode, WorkflowNodeType
 
 if TYPE_CHECKING:
     from .persistence import WorkflowCheckpoint
+    from .tools import ToolRegistry
 
 
 class ExecutionStatus(str, Enum):
@@ -135,17 +136,23 @@ class ExecutionResult:
 
 
 class WorkflowExecutor:
-    """Basic execution engine for WorkflowPlans with progress callbacks and checkpointing."""
+    """Execution engine for WorkflowPlans with tool integration, progress callbacks, and checkpointing.
+    
+    Paper Section 5.4: "The Planner traverses the system's atomic tool library...
+    to select the optimal ensemble of components"
+    """
 
     def __init__(self, progress_callback: Optional[Callable[[ProgressEvent], None]] = None,
                  checkpoint_interval: Optional[int] = None,
-                 checkpoint_dir: str = ".vibe_checkpoints"):
+                 checkpoint_dir: str = ".vibe_checkpoints",
+                 tool_registry: Optional['ToolRegistry'] = None):
         """Initialize executor.
 
         Args:
             progress_callback: Optional callback for progress events
             checkpoint_interval: Create checkpoint every N completed nodes (None = disabled)
             checkpoint_dir: Directory for checkpoint storage
+            tool_registry: Registry of tools for content generation (Paper Section 5.4)
         """
         self.node_handlers = {
             WorkflowNodeType.ANALYZE: self._execute_analyze,
@@ -160,6 +167,12 @@ class WorkflowExecutor:
         self._checkpoint_counter = 0
         self._last_checkpoint_id: Optional[str] = None
         self._current_plan: Optional[WorkflowPlan] = None
+        
+        # Paper Section 5.4: Atomic Tool Library
+        self.tool_registry = tool_registry
+        
+        # Context accumulator for passing outputs between nodes
+        self._execution_context: Dict[str, Any] = {}
 
     async def execute_plan(self, plan: WorkflowPlan,
                           resume_from_checkpoint: Optional['WorkflowCheckpoint'] = None) -> ExecutionResult:
@@ -697,11 +710,83 @@ class WorkflowExecutor:
 
         return False
 
-    # Basic node type handlers (mock implementations for Phase 3)
+    # Node type handlers with tool integration
+    
+    async def _execute_with_tool(self, node: WorkflowNode) -> Dict[str, Any]:
+        """Execute node using the specified tool from parameters.
+        
+        This is the core AIGC execution - using real tools to generate content.
+        """
+        # Get tool name from node parameters
+        tool_name = node.parameters.get("tool")
+        tool_inputs = node.parameters.get("tool_inputs", {})
+        
+        if not tool_name or not self.tool_registry:
+            # Fallback to simulated execution if no tool specified
+            return None
+        
+        tool = self.tool_registry.get(tool_name)
+        if not tool:
+            # Tool not found, return None to trigger fallback
+            return None
+        
+        # Build execution context from previous node outputs
+        context = {
+            "workflow_context": self._build_workflow_context(node),
+            "node_description": node.description,
+            "previous_outputs": self._get_dependency_outputs(node)
+        }
+        
+        # If no explicit prompt, use node description
+        if "prompt" not in tool_inputs and tool_name == "llm_generate":
+            tool_inputs["prompt"] = node.description
+        
+        # Execute the tool
+        result = await tool.execute(tool_inputs, context)
+        
+        if result.success:
+            # Store output in context for dependent nodes
+            self._execution_context[node.id] = result.output
+            return {
+                "type": "tool_execution",
+                "tool": tool_name,
+                "description": node.description,
+                "result": result.output,
+                "metadata": result.metadata
+            }
+        else:
+            raise RuntimeError(f"Tool execution failed: {result.error}")
+    
+    def _build_workflow_context(self, node: WorkflowNode) -> str:
+        """Build context string from workflow state for tool execution."""
+        context_parts = []
+        
+        # Add dependency outputs as context
+        for dep_id in node.dependencies:
+            if dep_id in self._execution_context:
+                output = self._execution_context[dep_id]
+                if isinstance(output, dict) and "text" in output:
+                    context_parts.append(f"Previous step ({dep_id}):\n{output['text']}")
+        
+        return "\n\n".join(context_parts)
+    
+    def _get_dependency_outputs(self, node: WorkflowNode) -> Dict[str, Any]:
+        """Get outputs from dependency nodes."""
+        return {
+            dep_id: self._execution_context.get(dep_id)
+            for dep_id in node.dependencies
+            if dep_id in self._execution_context
+        }
 
     async def _execute_analyze(self, node: WorkflowNode) -> Dict[str, Any]:
         """Execute analysis task."""
-        await asyncio.sleep(0.1)  # Simulate work
+        # Try tool execution first
+        tool_result = await self._execute_with_tool(node)
+        if tool_result:
+            return tool_result
+        
+        # Fallback to simulated execution
+        await asyncio.sleep(0.1)
         return {
             "type": "analysis",
             "description": node.description,
@@ -710,8 +795,36 @@ class WorkflowExecutor:
         }
 
     async def _execute_generate(self, node: WorkflowNode) -> Dict[str, Any]:
-        """Execute generation task."""
-        await asyncio.sleep(0.2)  # Simulate work
+        """Execute generation task - the core AIGC capability."""
+        # Try tool execution first
+        tool_result = await self._execute_with_tool(node)
+        if tool_result:
+            return tool_result
+        
+        # If no tool but we have a registry with LLM, use it automatically for generate tasks
+        if self.tool_registry:
+            llm_tool = self.tool_registry.get("llm_generate")
+            if llm_tool:
+                context = {
+                    "workflow_context": self._build_workflow_context(node),
+                    "node_description": node.description
+                }
+                result = await llm_tool.execute(
+                    {"prompt": node.description},
+                    context
+                )
+                if result.success:
+                    self._execution_context[node.id] = result.output
+                    return {
+                        "type": "generation",
+                        "tool": "llm_generate",
+                        "description": node.description,
+                        "result": result.output,
+                        "metadata": result.metadata
+                    }
+        
+        # Fallback to simulated execution
+        await asyncio.sleep(0.2)
         return {
             "type": "generation",
             "description": node.description,
@@ -721,7 +834,13 @@ class WorkflowExecutor:
 
     async def _execute_transform(self, node: WorkflowNode) -> Dict[str, Any]:
         """Execute transformation task."""
-        await asyncio.sleep(0.1)  # Simulate work
+        # Try tool execution first
+        tool_result = await self._execute_with_tool(node)
+        if tool_result:
+            return tool_result
+        
+        # Fallback to simulated execution
+        await asyncio.sleep(0.1)
         return {
             "type": "transformation",
             "description": node.description,
@@ -731,7 +850,13 @@ class WorkflowExecutor:
 
     async def _execute_validate(self, node: WorkflowNode) -> Dict[str, Any]:
         """Execute validation task."""
-        await asyncio.sleep(0.1)  # Simulate work
+        # Try tool execution first
+        tool_result = await self._execute_with_tool(node)
+        if tool_result:
+            return tool_result
+        
+        # Fallback to simulated execution
+        await asyncio.sleep(0.1)
         return {
             "type": "validation",
             "description": node.description,
@@ -750,6 +875,11 @@ class WorkflowExecutor:
 
     async def _execute_default(self, node: WorkflowNode) -> Dict[str, Any]:
         """Default handler for unknown node types."""
+        # Try tool execution first
+        tool_result = await self._execute_with_tool(node)
+        if tool_result:
+            return tool_result
+        
         await asyncio.sleep(0.1)
         return {
             "type": "default",

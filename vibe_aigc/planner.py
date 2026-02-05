@@ -9,6 +9,8 @@ from .llm import LLMClient, LLMConfig
 from .executor import WorkflowExecutor, ExecutionResult, ExecutionStatus, ProgressEvent
 from .visualization import WorkflowVisualizer, VisualizationFormat
 from .persistence import WorkflowCheckpoint, WorkflowPersistenceManager
+from .knowledge import KnowledgeBase, create_knowledge_base
+from .tools import ToolRegistry, create_default_registry
 
 
 class MetaPlanner:
@@ -17,7 +19,9 @@ class MetaPlanner:
     def __init__(self, llm_config: Optional[LLMConfig] = None,
                  progress_callback: Optional[Callable[[ProgressEvent], None]] = None,
                  checkpoint_interval: Optional[int] = None,
-                 checkpoint_dir: str = ".vibe_checkpoints"):
+                 checkpoint_dir: str = ".vibe_checkpoints",
+                 knowledge_base: Optional[KnowledgeBase] = None,
+                 tool_registry: Optional[ToolRegistry] = None):
         """Initialize MetaPlanner.
 
         Args:
@@ -25,9 +29,21 @@ class MetaPlanner:
             progress_callback: Optional callback for progress events
             checkpoint_interval: Create checkpoint every N completed nodes (None = disabled)
             checkpoint_dir: Directory for checkpoint storage
+            knowledge_base: Domain-specific expert knowledge (Paper Section 5.3)
+            tool_registry: Atomic tool library for content generation (Paper Section 5.4)
         """
         self.llm_client = LLMClient(llm_config)
-        self.executor = WorkflowExecutor(progress_callback, checkpoint_interval, checkpoint_dir)
+        
+        # Paper Section 5.3: Domain-Specific Expert Knowledge Base
+        self.knowledge_base = knowledge_base or create_knowledge_base()
+        
+        # Paper Section 5.4: Atomic Tool Library
+        self.tool_registry = tool_registry or create_default_registry()
+        
+        self.executor = WorkflowExecutor(
+            progress_callback, checkpoint_interval, checkpoint_dir,
+            tool_registry=self.tool_registry
+        )
         self.max_replan_attempts = 3  # New configuration
         self.replan_history: List[Dict[str, Any]] = []  # New field for tracking adaptation history
         self.progress_callback = progress_callback
@@ -35,11 +51,28 @@ class MetaPlanner:
         self._persistence_manager = WorkflowPersistenceManager(checkpoint_dir)
 
     async def plan(self, vibe: Vibe) -> WorkflowPlan:
-        """Generate a WorkflowPlan from a Vibe using LLM decomposition."""
+        """Generate a WorkflowPlan from a Vibe using LLM decomposition.
+        
+        This method implements the paper's architecture:
+        1. Query knowledge base for domain expertise (Section 5.3)
+        2. Use MetaPlanner (LLM) to decompose Vibe into workflow (Section 5.2)
+        3. Map workflow nodes to available tools (Section 5.4)
+        """
 
         try:
-            # Get structured decomposition from LLM
-            plan_data = await self.llm_client.decompose_vibe(vibe)
+            # Paper Section 5.3: Query domain knowledge for intent understanding
+            # "The Planner begins by querying the creative expert knowledge modules"
+            knowledge_context = self.knowledge_base.to_prompt_context(vibe.description)
+            
+            # Paper Section 5.4: Get available tools for the planner to reference
+            tools_context = self.tool_registry.to_prompt_context()
+            
+            # Get structured decomposition from LLM with enhanced context
+            plan_data = await self.llm_client.decompose_vibe(
+                vibe, 
+                knowledge_context=knowledge_context,
+                tools_context=tools_context
+            )
         except Exception as e:
             raise RuntimeError(
                 f"Failed to generate workflow plan for vibe '{vibe.description}': {e}"

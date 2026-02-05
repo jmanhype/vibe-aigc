@@ -282,7 +282,7 @@ class TestAdaptiveReplanning:
         ]
 
         plan_call_count = 0
-        async def plan_side_effect(vibe):
+        async def plan_side_effect(vibe, knowledge_context=None, tools_context=None):
             nonlocal plan_call_count
             result = plans[min(plan_call_count, len(plans) - 1)]
             plan_call_count += 1
