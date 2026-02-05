@@ -8,7 +8,18 @@ version = "0.1.0"
 description = "A New Paradigm for Content Generation via Agentic Orchestration"
 authors = [{name = "Vibe AIGC Contributors"}]
 license = {text = "MIT"}
+readme = "README.md"
 requires-python = ">=3.12"
+keywords = ["ai", "aigc", "agents", "orchestration", "content-generation", "llm", "workflow"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.0.0",
     "openai>=1.0.0",
@@ -22,3 +33,23 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jmanhype/vibe-aigc"
+Repository = "https://github.com/jmanhype/vibe-aigc"
+Documentation = "https://github.com/jmanhype/vibe-aigc#readme"
+Issues = "https://github.com/jmanhype/vibe-aigc/issues"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
