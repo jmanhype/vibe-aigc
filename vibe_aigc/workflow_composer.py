@@ -321,7 +321,7 @@ Focus on actionable improvements."""
             
             # Check if we've reached quality threshold
             if quality >= self.config.quality_threshold:
-                print(f"✓ Quality threshold reached ({quality} >= {self.config.quality_threshold})")
+                print(f"[OK] Quality threshold reached ({quality} >= {self.config.quality_threshold})")
                 break
             
             # Modify workflow for next iteration
