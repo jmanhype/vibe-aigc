@@ -1,25 +1,29 @@
 """
 Model Registry - Auto-detect and manage available models.
 
-This is what was MISSING from our implementation.
-The system should KNOW what it can do without being told.
+The system KNOWS what it can do without being told.
 
 Features:
+- Auto-detect hardware (GPU, VRAM)
 - Auto-detect models installed in ComfyUI
 - Categorize by capability (image, video, audio)
 - Track model specs (VRAM, quality, speed)
 - Research new models via Perplexity
+- Download missing models via Comfy-Pilot
 - Recommend best model for a task
+- Auto-upgrade to better models
 """
 
 import asyncio
 import aiohttp
 import json
+import subprocess
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from enum import Enum
 import os
+import sys
 
 
 class ModelCapability(Enum):
@@ -616,6 +620,146 @@ Give me:
                 lines.append(f"     {r['url']}")
         
         return "\n".join(lines)
+    
+    # ==================== COMFY-PILOT INTEGRATION ====================
+    
+    async def call_comfy_pilot(self, tool: str, **kwargs) -> Dict[str, Any]:
+        """Call a Comfy-Pilot tool via the MCP server."""
+        async with aiohttp.ClientSession() as session:
+            # Comfy-Pilot exposes tools via ComfyUI's API
+            # For now, use direct API calls
+            try:
+                if tool == "download_model":
+                    return await self._download_model_direct(**kwargs)
+                elif tool == "install_custom_node":
+                    return await self._install_node_direct(**kwargs)
+                elif tool == "search_custom_nodes":
+                    return await self._search_nodes_direct(**kwargs)
+                else:
+                    return {"error": f"Unknown tool: {tool}"}
+            except Exception as e:
+                return {"error": str(e)}
+    
+    async def _download_model_direct(
+        self,
+        url: str,
+        model_type: str,
+        filename: Optional[str] = None,
+        subfolder: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Download a model using ComfyUI Manager's API."""
+        async with aiohttp.ClientSession() as session:
+            # ComfyUI Manager endpoint for model download
+            payload = {
+                "url": url,
+                "model_type": model_type
+            }
+            if filename:
+                payload["filename"] = filename
+            if subfolder:
+                payload["subfolder"] = subfolder
+            
+            try:
+                async with session.post(
+                    f"{self.comfyui_url}/manager/model/download",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=600)  # 10 min timeout for downloads
+                ) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    else:
+                        return {"error": f"HTTP {resp.status}", "body": await resp.text()}
+            except Exception as e:
+                return {"error": str(e)}
+    
+    async def _install_node_direct(self, node_id: str) -> Dict[str, Any]:
+        """Install a custom node via ComfyUI Manager."""
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    f"{self.comfyui_url}/manager/install",
+                    json={"id": node_id},
+                    timeout=aiohttp.ClientTimeout(total=120)
+                ) as resp:
+                    return await resp.json()
+            except Exception as e:
+                return {"error": str(e)}
+    
+    async def _search_nodes_direct(
+        self,
+        query: Optional[str] = None,
+        status: str = "all",
+        limit: int = 10
+    ) -> Dict[str, Any]:
+        """Search for custom nodes via ComfyUI Manager."""
+        async with aiohttp.ClientSession() as session:
+            try:
+                params = {"limit": limit}
+                if query:
+                    params["query"] = query
+                if status != "all":
+                    params["status"] = status
+                
+                async with session.get(
+                    f"{self.comfyui_url}/manager/search",
+                    params=params
+                ) as resp:
+                    return await resp.json()
+            except Exception as e:
+                return {"error": str(e)}
+    
+    async def download_recommended_model(
+        self,
+        capability: ModelCapability
+    ) -> Dict[str, Any]:
+        """Download the best recommended model for a capability."""
+        recs = self.get_recommended_models(capability)
+        if not recs:
+            return {"error": f"No recommended models for {capability.value}"}
+        
+        best = recs[0]
+        url = best.get("url", "")
+        
+        # Map capability to model_type for ComfyUI
+        model_type_map = {
+            ModelCapability.TEXT_TO_IMAGE: "checkpoints",
+            ModelCapability.TEXT_TO_VIDEO: "unet",  # LTX uses UNET
+            ModelCapability.TEXT_TO_AUDIO: "checkpoints",
+        }
+        model_type = model_type_map.get(capability, "checkpoints")
+        
+        print(f"Downloading {best['name']} from {url}...")
+        result = await self._download_model_direct(
+            url=url,
+            model_type=model_type
+        )
+        
+        if "error" not in result:
+            # Refresh registry after download
+            await self.refresh()
+        
+        return result
+    
+    async def auto_upgrade(self, max_downloads: int = 1) -> List[Dict[str, Any]]:
+        """
+        Automatically download missing/better models.
+        
+        This is the AUTONOMOUS capability the paper describes.
+        """
+        results = []
+        recs = self.get_recommended_models()
+        
+        for rec in recs[:max_downloads]:
+            print(f"Auto-upgrading: {rec['name']} for {rec['capability']}")
+            result = await self.download_recommended_model(
+                ModelCapability(rec['capability'])
+            )
+            results.append({
+                "model": rec['name'],
+                "result": result
+            })
+        
+        return results
 
 
 async def demo():
