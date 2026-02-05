@@ -44,6 +44,8 @@ class ExecutionResult:
         self.total_duration: float = 0.0
         self.parallel_efficiency: float = 0.0  # New field for tracking parallel execution benefits
         self.execution_groups: List[List[str]] = []  # New field for tracking parallel execution groups
+        self.feedback_data: Dict[str, Any] = {}  # New field for storing node execution feedback
+        self.replan_suggestions: List[Dict[str, Any]] = []  # New field for storing replanning suggestions
 
     def add_node_result(self, result: NodeResult):
         """Add result for a completed node."""
@@ -84,6 +86,23 @@ class ExecutionResult:
         actual_duration = self.total_duration
 
         return max(0.0, (total_node_duration - actual_duration) / total_node_duration) if total_node_duration > 0 else 0.0
+
+    def add_feedback(self, node_id: str, feedback: Dict[str, Any]):
+        """Add feedback data from node execution."""
+        self.feedback_data[node_id] = feedback
+
+    def suggest_replan(self, suggestion: Dict[str, Any]):
+        """Add replanning suggestion based on execution results."""
+        self.replan_suggestions.append({
+            "timestamp": datetime.now().isoformat(),
+            **suggestion  # Flatten the suggestion into the main dict
+        })
+
+    def should_replan(self) -> bool:
+        """Determine if replanning is recommended based on execution results."""
+        # Check for multiple failures, resource constraints, or explicit suggestions
+        failed_nodes = sum(1 for r in self.node_results.values() if r.status == ExecutionStatus.FAILED)
+        return failed_nodes > 1 or len(self.replan_suggestions) > 0
 
 
 class WorkflowExecutor:
@@ -174,6 +193,18 @@ class WorkflowExecutor:
                 result=node_result, duration=duration
             ))
 
+            # Collect execution feedback
+            feedback = self._analyze_node_execution(node, node_result, duration)
+            result.add_feedback(node.id, feedback)
+
+            # Check for replanning triggers
+            if self._should_suggest_replan(node, node_result, feedback):
+                result.suggest_replan({
+                    "node_id": node.id,
+                    "reason": feedback.get("replan_reason", "low_quality_output"),
+                    "suggested_changes": feedback.get("optimization_suggestions", [])
+                })
+
             # Execute children in parallel groups
             if node.children:
                 child_groups = self._build_parallel_execution_groups(node.children, result)
@@ -190,6 +221,19 @@ class WorkflowExecutor:
                 node.id, ExecutionStatus.FAILED,
                 error=str(e), duration=duration
             ))
+
+            # Enhanced error feedback
+            error_feedback = self._analyze_execution_error(node, e, duration)
+            result.add_feedback(node.id, error_feedback)
+
+            if error_feedback.get("replannable", False):
+                result.suggest_replan({
+                    "node_id": node.id,
+                    "error": str(e),
+                    "replan_reason": "execution_failure",
+                    "suggested_changes": error_feedback.get("suggested_changes", [])
+                })
+
             raise
 
     def _dependencies_satisfied(self, node: WorkflowNode, result: ExecutionResult) -> bool:
@@ -260,6 +304,158 @@ class WorkflowExecutor:
                 processed_nodes.add(node_id)
 
         return groups
+
+    def _analyze_node_execution(self, node: WorkflowNode, node_result: Any, duration: float) -> Dict[str, Any]:
+        """Analyze node execution result for feedback."""
+
+        # Assess execution quality based on result content and performance
+        execution_quality = self._assess_result_quality(node_result)
+        resource_usage = self._measure_resource_usage(node, duration)
+
+        feedback = {
+            "execution_quality": execution_quality,
+            "resource_usage": resource_usage,
+            "performance_metrics": {
+                "duration": duration,
+                "expected_duration": node.estimated_duration,
+                "efficiency": self._calculate_node_efficiency(duration, node.estimated_duration)
+            },
+            "replan_indicators": self._check_replan_indicators(node, node_result, execution_quality),
+            "optimization_suggestions": self._suggest_optimizations(node, node_result, duration)
+        }
+
+        return feedback
+
+    def _analyze_execution_error(self, node: WorkflowNode, error: Exception, duration: float) -> Dict[str, Any]:
+        """Analyze execution error for feedback and replanning suggestions."""
+
+        error_type = type(error).__name__
+        error_message = str(error)
+
+        # Categorize errors for replanning decisions
+        replannable_errors = ["TimeoutError", "ConnectionError", "HTTPError", "MemoryError", "RuntimeError"]
+        is_replannable = error_type in replannable_errors or "timeout" in error_message.lower()
+
+        feedback = {
+            "error_type": error_type,
+            "error_message": error_message,
+            "replannable": is_replannable,
+            "execution_quality": 0.0,  # Failed execution
+            "resource_usage": self._measure_resource_usage(node, duration),
+            "performance_metrics": {
+                "duration": duration,
+                "expected_duration": node.estimated_duration,
+                "failure_point": "execution"
+            },
+            "suggested_changes": self._suggest_error_recovery(node, error),
+            "replan_reason": f"execution_failure_{error_type.lower()}"
+        }
+
+        return feedback
+
+    def _assess_result_quality(self, result: Any) -> float:
+        """Assess the quality of a node execution result."""
+        if result is None:
+            return 0.0
+
+        # Basic quality assessment based on result structure
+        if isinstance(result, dict):
+            # Check for expected fields
+            quality = 0.5  # Base quality for dict results
+
+            # Increase quality for meaningful content
+            if result.get("result") and len(str(result.get("result", ""))) > 10:
+                quality += 0.3
+
+            # Check for error indicators
+            if result.get("error") or result.get("failed"):
+                quality = max(0.1, quality - 0.4)
+
+            return min(1.0, quality)
+
+        # Non-dict results get moderate quality
+        return 0.7 if result else 0.0
+
+    def _measure_resource_usage(self, node: WorkflowNode, duration: float) -> Dict[str, Any]:
+        """Measure resource usage for a node execution."""
+        return {
+            "cpu_time": duration,  # Simplified - could use psutil for real CPU metrics
+            "memory_usage": "normal",  # Placeholder - could implement real memory tracking
+            "efficiency_ratio": self._calculate_node_efficiency(duration, node.estimated_duration)
+        }
+
+    def _calculate_node_efficiency(self, actual_duration: float, estimated_duration: Optional[int]) -> float:
+        """Calculate efficiency ratio of actual vs estimated duration."""
+        if not estimated_duration or estimated_duration <= 0:
+            return 1.0  # No estimate available
+
+        # Efficiency is inverse of duration ratio - lower actual time = higher efficiency
+        return min(2.0, estimated_duration / max(0.1, actual_duration))
+
+    def _check_replan_indicators(self, node: WorkflowNode, result: Any, quality: float) -> List[str]:
+        """Check for indicators that suggest replanning might be beneficial."""
+        indicators = []
+
+        # Quality-based indicators
+        if quality < 0.3:
+            indicators.append("low_quality_output")
+
+        # Result content indicators
+        if isinstance(result, dict):
+            if result.get("error"):
+                indicators.append("execution_error")
+            if result.get("timeout"):
+                indicators.append("performance_issue")
+
+        return indicators
+
+    def _suggest_optimizations(self, node: WorkflowNode, result: Any, duration: float) -> List[str]:
+        """Suggest optimizations based on execution analysis."""
+        suggestions = []
+
+        # Performance-based suggestions - suggest if actual duration exceeds expected
+        if node.estimated_duration and node.estimated_duration > 0:
+            if duration > float(node.estimated_duration) * 1.5:  # 50% slower than expected
+                suggestions.append("reduce_task_complexity")
+                suggestions.append("parallelize_subtasks")
+        elif node.estimated_duration == 0 and duration > 0.1:  # For tasks with no estimate, suggest if > 0.1s
+            suggestions.append("reduce_task_complexity")
+
+        # Quality-based suggestions
+        if isinstance(result, dict) and len(str(result.get("result", ""))) < 20:
+            suggestions.append("enhance_output_detail")
+
+        return suggestions
+
+    def _suggest_error_recovery(self, node: WorkflowNode, error: Exception) -> List[str]:
+        """Suggest recovery strategies based on error type."""
+        error_type = type(error).__name__
+        suggestions = []
+
+        if "timeout" in str(error).lower() or error_type == "TimeoutError":
+            suggestions.extend(["increase_timeout", "break_into_smaller_tasks"])
+        elif "memory" in str(error).lower() or error_type == "MemoryError":
+            suggestions.extend(["reduce_data_size", "use_streaming_approach"])
+        elif "connection" in str(error).lower() or error_type in ["ConnectionError", "HTTPError"]:
+            suggestions.extend(["retry_with_backoff", "use_alternative_endpoint"])
+        else:
+            suggestions.append("retry_with_different_parameters")
+
+        return suggestions
+
+    def _should_suggest_replan(self, node: WorkflowNode, result: Any, feedback: Dict[str, Any]) -> bool:
+        """Determine if execution suggests replanning."""
+        quality_threshold = 0.7  # Configurable
+
+        # Check quality threshold
+        if feedback.get("execution_quality", 1.0) < quality_threshold:
+            return True
+
+        # Check for specific replan indicators
+        if len(feedback.get("replan_indicators", [])) >= 2:
+            return True
+
+        return False
 
     # Basic node type handlers (mock implementations for Phase 3)
 
