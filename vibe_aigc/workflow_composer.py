@@ -345,19 +345,20 @@ Focus on actionable improvements."""
 async def demo():
     """Demo the workflow composer."""
     
-    # Load API keys
-    config_path = Path("C:/ComfyUI_windows_portable/ComfyUI/custom_nodes/ComfyUI-Gemini/config.json")
-    gemini_key = None
-    if config_path.exists():
-        with open(config_path) as f:
-            gemini_key = json.load(f).get("GEMINI_API_KEY")
+    # Load API keys from environment or config
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    if not gemini_key:
+        config_path = Path("C:/ComfyUI_windows_portable/ComfyUI/custom_nodes/ComfyUI-Gemini/config.json")
+        if config_path.exists():
+            with open(config_path) as f:
+                gemini_key = json.load(f).get("GEMINI_API_KEY")
     
     if not gemini_key:
         print("No Gemini API key found!")
         return
     
-    # Perplexity key for research
-    perplexity_key = "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"
+    # Perplexity key from environment
+    perplexity_key = os.environ.get("PERPLEXITY_API_KEY")
     
     config = ComposerConfig(
         gemini_api_key=gemini_key,
