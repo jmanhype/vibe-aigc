@@ -1,0 +1,129 @@
+{
+  "hardware": {
+    "gpu": "RTX 2080 SUPER",
+    "vram": "8GB",
+    "ram": "32GB",
+    "notes": "Good balance of speed and quality. Use fp8 for larger models."
+  },
+  
+  "comfyui_launch_args": [
+    "--highvram",
+    "--fp16-vae",
+    "--preview-method auto"
+  ],
+  
+  "sd15_optimal": {
+    "resolution": {"width": 512, "height": 512},
+    "max_resolution": {"width": 768, "height": 768},
+    "batch_size": 1,
+    "steps": 20,
+    "cfg": 7.0,
+    "sampler": "euler_ancestral",
+    "scheduler": "normal",
+    "notes": "Fast and reliable. Can go up to 768x768."
+  },
+  
+  "sdxl_optimal": {
+    "resolution": {"width": 1024, "height": 1024},
+    "batch_size": 1,
+    "steps": 25,
+    "cfg": 5.5,
+    "sampler": "dpmpp_2m",
+    "scheduler": "karras",
+    "vae_tiling": true,
+    "fp8_model": true,
+    "notes": "Requires fp8 or --lowvram flag. Enable VAE tiling for stability."
+  },
+  
+  "animatediff_optimal": {
+    "motion_model": "v3_sd15_mm.ckpt",
+    "frames": {
+      "fast": 8,
+      "balanced": 16,
+      "quality": 24
+    },
+    "resolution": {"width": 512, "height": 512},
+    "steps": 15,
+    "cfg": 7.0,
+    "fps": 8,
+    "context_length": 16,
+    "notes": "16 frames @ 512x512 is the sweet spot. 8 frames for quick tests."
+  },
+  
+  "upscaling": {
+    "method": "latent_upscale",
+    "scale": 1.5,
+    "denoise": 0.5,
+    "steps": 15,
+    "alternative": "RealESRGAN_x4plus (no diffusion, faster)"
+  },
+  
+  "img2img": {
+    "denoise": {
+      "subtle": 0.4,
+      "moderate": 0.6,
+      "heavy": 0.8
+    },
+    "steps": 20,
+    "cfg": 7.0
+  },
+  
+  "memory_tips": [
+    "Use --highvram since you have 8GB (not --lowvram)",
+    "Enable fp8 for SDXL/Flux models",
+    "Keep batch_size=1 for video generation",
+    "Use VAE tiling for large images",
+    "Close other GPU apps during generation",
+    "32GB RAM allows large queue without issues"
+  ],
+  
+  "recommended_models": {
+    "sd15": [
+      "v1-5-pruned-emaonly.safetensors",
+      "dreamshaper_8.safetensors",
+      "realisticVisionV60_v60.safetensors"
+    ],
+    "sdxl": [
+      "sd_xl_base_1.0.safetensors (with fp8)",
+      "juggernautXL_v9.safetensors"
+    ],
+    "motion": [
+      "v3_sd15_mm.ckpt (best quality)",
+      "mm-Stabilized_high.pth (more stable)",
+      "temporaldiff-v1-animatediff (higher res support)"
+    ],
+    "upscale": [
+      "RealESRGAN_x4plus.pth",
+      "4x-UltraSharp.pth"
+    ]
+  },
+  
+  "workflows": {
+    "quick_image": {
+      "model": "SD 1.5",
+      "resolution": "512x512",
+      "steps": 15,
+      "time": "~3 seconds"
+    },
+    "quality_image": {
+      "model": "SD 1.5",
+      "resolution": "768x768",
+      "steps": 25,
+      "time": "~8 seconds"
+    },
+    "quick_video": {
+      "model": "SD 1.5 + AnimateDiff v3",
+      "resolution": "512x512",
+      "frames": 8,
+      "steps": 12,
+      "time": "~20 seconds"
+    },
+    "quality_video": {
+      "model": "SD 1.5 + AnimateDiff v3",
+      "resolution": "512x512",
+      "frames": 16,
+      "steps": 20,
+      "time": "~45 seconds"
+    }
+  }
+}
