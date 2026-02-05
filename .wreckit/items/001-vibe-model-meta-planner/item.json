@@ -1,29 +1,29 @@
 {
-  "schema_version": 1,
-  "id": "001-vibe-model-meta-planner",
-  "title": "Core Vibe Model and Meta-Planner Architecture",
-  "section": "core",
-  "state": "critique",
-  "overview": "Implement the foundational Vibe AIGC system based on arXiv:2602.04575. Create the Vibe data model (high-level aesthetic/intent representation) and MetaPlanner class that decomposes Vibes into executable agentic pipelines.\n\n**Motivation:** Bridge the Intent-Execution Gap by enabling users to express high-level creative intent (Vibe) and have the system automatically generate and execute hierarchical agent workflows.\n\n**Success criteria:**\n- Vibe dataclass with description, style, constraints, domain fields\n- MetaPlanner class that accepts Vibe and generates WorkflowPlan\n- WorkflowNode structure for hierarchical task decomposition\n- Integration with LLM for intelligent decomposition\n- Basic execution engine for running generated workflows\n\n**Technical constraints:**\n- Python 3.12+\n- Pydantic for data validation\n- Async/await for execution\n- OpenAI-compatible LLM client",
-  "branch": null,
-  "pr_url": null,
-  "pr_number": null,
-  "last_error": "Not all stories are done",
-  "created_at": "2026-02-05T07:34:00.000Z",
-  "updated_at": "2026-02-05T14:09:47.245Z",
-  "problem_statement": "Current generative AI systems require detailed prompt engineering. Users want to express high-level creative intent (a 'Vibe') and have the system automatically figure out the execution details.",
-  "motivation": "Reproduce the Vibe AIGC paper (arXiv:2602.04575) to create a new paradigm for content generation via agentic orchestration.",
-  "success_criteria": [
-    "Vibe dataclass with description, style, constraints, domain fields",
-    "MetaPlanner class that accepts Vibe and generates WorkflowPlan",
-    "WorkflowNode structure for hierarchical task decomposition",
-    "LLM-based decomposition of Vibe into concrete tasks",
-    "Basic execution engine for running workflows"
-  ],
-  "technical_constraints": [
-    "Python 3.12+",
-    "Pydantic for data validation",
-    "Async/await pattern",
-    "OpenAI-compatible LLM client"
-  ]
+    "schema_version":  1,
+    "id":  "001-vibe-model-meta-planner",
+    "title":  "Core Vibe Model and Meta-Planner Architecture",
+    "section":  "core",
+    "state":  "done",
+    "overview":  "Implement the foundational Vibe AIGC system based on arXiv:2602.04575. Create the Vibe data model (high-level aesthetic/intent representation) and MetaPlanner class that decomposes Vibes into executable agentic pipelines.\n\n**Motivation:** Bridge the Intent-Execution Gap by enabling users to express high-level creative intent (Vibe) and have the system automatically generate and execute hierarchical agent workflows.\n\n**Success criteria:**\n- Vibe dataclass with description, style, constraints, domain fields\n- MetaPlanner class that accepts Vibe and generates WorkflowPlan\n- WorkflowNode structure for hierarchical task decomposition\n- Integration with LLM for intelligent decomposition\n- Basic execution engine for running generated workflows\n\n**Technical constraints:**\n- Python 3.12+\n- Pydantic for data validation\n- Async/await for execution\n- OpenAI-compatible LLM client",
+    "branch":  null,
+    "pr_url":  null,
+    "pr_number":  null,
+    "last_error":  "Not all stories are done",
+    "created_at":  "2026-02-05T07:34:00.000Z",
+    "updated_at":  "2026-02-05T14:09:47.245Z",
+    "problem_statement":  "Current generative AI systems require detailed prompt engineering. Users want to express high-level creative intent (a \u0027Vibe\u0027) and have the system automatically figure out the execution details.",
+    "motivation":  "Reproduce the Vibe AIGC paper (arXiv:2602.04575) to create a new paradigm for content generation via agentic orchestration.",
+    "success_criteria":  [
+                             "Vibe dataclass with description, style, constraints, domain fields",
+                             "MetaPlanner class that accepts Vibe and generates WorkflowPlan",
+                             "WorkflowNode structure for hierarchical task decomposition",
+                             "LLM-based decomposition of Vibe into concrete tasks",
+                             "Basic execution engine for running workflows"
+                         ],
+    "technical_constraints":  [
+                                  "Python 3.12+",
+                                  "Pydantic for data validation",
+                                  "Async/await pattern",
+                                  "OpenAI-compatible LLM client"
+                              ]
 }

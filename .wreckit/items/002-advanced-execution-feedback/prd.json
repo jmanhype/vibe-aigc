@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "id": "002-advanced-execution-feedback",
+  "branch_name": "wreckit/002-advanced-execution-feedback",
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Parallel Execution of Independent Workflow Nodes",
+      "acceptance_criteria": [
+        "Independent workflow nodes execute concurrently using asyncio.gather()",
+        "Execution time is reduced by 40-60% for workflows with parallelizable tasks",
+        "Dependency order is maintained - dependent nodes wait for prerequisites",
+        "ExecutionResult includes parallel_efficiency metric showing performance gain",
+        "All existing sequential execution tests continue to pass",
+        "New parallel execution test suite validates concurrent execution scenarios"
+      ],
+      "priority": 1,
+      "status": "pending",
+      "notes": "Foundation for all advanced features. Builds on existing dependency resolution in _dependencies_satisfied() method. Uses topological sorting to identify safe parallel groups."
+    },
+    {
+      "id": "US-002",
+      "title": "Parallel Execution Groups with Topological Sorting",
+      "acceptance_criteria": [
+        "_build_parallel_execution_groups() method correctly identifies parallelizable nodes",
+        "Nodes with dependencies are placed in later execution groups",
+        "Each group contains only nodes that can execute simultaneously",
+        "Complex dependency chains are correctly handled",
+        "Circular dependencies are detected and raise meaningful errors",
+        "Performance tests show parallel groups execute faster than sequential"
+      ],
+      "priority": 1,
+      "status": "pending",
+      "notes": "Core algorithm for safe parallel execution. Critical for correctness - must never violate dependency constraints."
+    },
+    {
+      "id": "US-003",
+      "title": "Enhanced Result Tracking for Parallel Execution",
+      "acceptance_criteria": [
+        "ExecutionResult tracks parallel execution groups",
+        "parallel_efficiency calculation provides meaningful performance metrics",
+        "execution_groups field shows which nodes executed in parallel",
+        "All timing information remains accurate despite concurrent execution",
+        "Backward compatibility maintained with existing result format",
+        "get_summary() includes parallel execution statistics"
+      ],
+      "priority": 1,
+      "status": "pending",
+      "notes": "Extends existing ExecutionResult class without breaking changes. Provides visibility into parallel execution benefits."
+    },
+    {
+      "id": "US-004",
+      "title": "Feedback Data Collection from Node Execution",
+      "acceptance_criteria": [
+        "Each node execution generates feedback data about quality and performance",
+        "Feedback includes execution_quality, resource_usage, and optimization_suggestions",
+        "ExecutionResult.feedback_data stores node-level feedback information",
+        "Feedback triggers are configurable (quality thresholds, resource limits)",
+        "Feedback collection doesn't impact execution performance significantly",
+        "Failed executions generate actionable feedback for replanning"
+      ],
+      "priority": 2,
+      "status": "pending",
+      "notes": "Foundation for adaptive replanning. Collects data needed for MetaPlanner to make intelligent adaptation decisions."
+    },
+    {
+      "id": "US-005",
+      "title": "Adaptive Replanning on Execution Failures",
+      "acceptance_criteria": [
+        "MetaPlanner.execute_with_adaptation() automatically replans on failures",
+        "Replanning attempts are limited (default 3) to prevent infinite loops",
+        "LLM generates adapted vibes based on execution feedback",
+        "Adaptation history is tracked in execution results",
+        "Cycle detection prevents replanning loops",
+        "Eventually successful execution after adaptation is validated"
+      ],
+      "priority": 2,
+      "status": "pending",
+      "notes": "Implements core feedback loop from Vibe AIGC paper. Uses LLM to adapt vibe based on execution failures and feedback."
+    },
+    {
+      "id": "US-006",
+      "title": "Replanning Suggestion System",
+      "acceptance_criteria": [
+        "ExecutionResult.suggest_replan() captures replanning recommendations",
+        "should_replan() logic determines when replanning is beneficial",
+        "Suggestions include specific reasons and recommended changes",
+        "Multiple failure patterns trigger different adaptation strategies",
+        "Replan suggestions are preserved in execution history",
+        "Manual replan triggers are supported for user-initiated adaptations"
+      ],
+      "priority": 2,
+      "status": "pending",
+      "notes": "Intelligent replanning decision system. Analyzes execution patterns to determine when and how to adapt workflows."
+    },
+    {
+      "id": "US-007",
+      "title": "Progress Callback System for Real-time Updates",
+      "acceptance_criteria": [
+        "ProgressEvent captures workflow_started, node_started, node_completed, workflow_completed events",
+        "Progress callbacks are configurable and optional",
+        "Progress percentage accurately reflects workflow completion",
+        "Callback failures don't interrupt workflow execution",
+        "Events include meaningful messages and metadata",
+        "Progress events support both node-level and group-level granularity"
+      ],
+      "priority": 2,
+      "status": "pending",
+      "notes": "Real-time visibility into execution progress. Essential for long-running workflows and debugging."
+    },
+    {
+      "id": "US-008",
+      "title": "ASCII Workflow Diagram Generation",
+      "acceptance_criteria": [
+        "WorkflowVisualizer generates clear ASCII tree diagrams",
+        "Diagrams show node hierarchy, dependencies, and execution status",
+        "Status indicators (✅❌⏳) clearly show node states",
+        "Dependencies are clearly marked in diagram output",
+        "Execution summary includes timing and parallel efficiency",
+        "Large workflows are rendered readably without truncation"
+      ],
+      "priority": 3,
+      "status": "pending",
+      "notes": "Human-readable workflow visualization. Important for debugging and understanding workflow structure."
+    },
+    {
+      "id": "US-009",
+      "title": "Mermaid Workflow Diagram Generation",
+      "acceptance_criteria": [
+        "WorkflowVisualizer generates valid Mermaid flowchart syntax",
+        "Node shapes reflect node types (analyze=[()], generate=[], etc.)",
+        "Status-based styling uses appropriate colors and classes",
+        "Dependencies show as arrows between nodes",
+        "Generated diagrams render correctly in Mermaid viewers",
+        "Large workflows remain visually comprehensible"
+      ],
+      "priority": 3,
+      "status": "pending",
+      "notes": "Rich visual workflow representation. Enables integration with documentation and monitoring tools."
+    },
+    {
+      "id": "US-010",
+      "title": "MetaPlanner Integration with Visualization",
+      "acceptance_criteria": [
+        "MetaPlanner.execute_with_visualization() provides integrated progress and diagrams",
+        "Default progress visualization shows meaningful real-time updates",
+        "Result includes both execution data and visualization",
+        "Visualization format (ASCII/Mermaid) is selectable",
+        "Progress callbacks can be customized while maintaining visualization",
+        "Backward compatibility maintained with existing execute() method"
+      ],
+      "priority": 3,
+      "status": "pending",
+      "notes": "User-friendly interface for visualization features. Makes advanced features easily accessible."
+    },
+    {
+      "id": "US-011",
+      "title": "Workflow Checkpoint Serialization",
+      "acceptance_criteria": [
+        "WorkflowCheckpoint serializes complete workflow and execution state to JSON",
+        "Serialization includes plan, vibe, execution results, and metadata",
+        "Deserialization perfectly restores workflow state",
+        "Schema versioning prevents compatibility issues",
+        "Checkpoint IDs are unique and human-readable",
+        "Serialization handles complex nested workflow structures"
+      ],
+      "priority": 3,
+      "status": "pending",
+      "notes": "Foundation for workflow persistence. Critical for long-running workflow resume capability."
+    },
+    {
+      "id": "US-012",
+      "title": "Persistence Manager for Checkpoint Storage",
+      "acceptance_criteria": [
+        "WorkflowPersistenceManager saves/loads checkpoints to disk",
+        "Checkpoint directory is configurable and created automatically",
+        "list_checkpoints() provides useful metadata for checkpoint selection",
+        "delete_checkpoint() safely removes checkpoint files",
+        "Corrupted checkpoints are handled gracefully",
+        "Concurrent access to checkpoints is safe"
+      ],
+      "priority": 3,
+      "status": "pending",
+      "notes": "Reliable checkpoint storage system. Must handle file system errors and concurrent access gracefully."
+    },
+    {
+      "id": "US-013",
+      "title": "Workflow Resume from Checkpoint",
+      "acceptance_criteria": [
+        "WorkflowExecutor.execute_plan() accepts resume_from_checkpoint parameter",
+        "Resume skips completed nodes and continues from interruption point",
+        "_identify_remaining_nodes() correctly determines incomplete work",
+        "Resumed execution maintains all original workflow semantics",
+        "Progress tracking continues accurately from resume point",
+        "Resume works correctly with parallel execution and dependencies"
+      ],
+      "priority": 4,
+      "status": "pending",
+      "notes": "Core resume functionality. Must perfectly restore execution state and continue safely."
+    },
+    {
+      "id": "US-014",
+      "title": "Automatic Checkpoint Creation During Execution",
+      "acceptance_criteria": [
+        "Checkpoints are created automatically at configurable intervals",
+        "Checkpoint creation doesn't significantly impact execution performance",
+        "Final checkpoints are saved on both success and failure",
+        "Intermediate checkpoints capture meaningful progress points",
+        "Checkpoint creation is optional and configurable",
+        "Failed checkpoint saves don't interrupt workflow execution"
+      ],
+      "priority": 4,
+      "status": "pending",
+      "notes": "Automated checkpoint management. Balances data safety with performance impact."
+    },
+    {
+      "id": "US-015",
+      "title": "MetaPlanner Resume Integration",
+      "acceptance_criteria": [
+        "MetaPlanner.execute_with_resume() supports checkpoint-based resume",
+        "Checkpoint listing integrated into MetaPlanner interface",
+        "Checkpoint deletion through MetaPlanner is safe and user-friendly",
+        "Resume results include checkpoint history and persistence metadata",
+        "Integration maintains full backward compatibility",
+        "Error handling provides clear guidance for persistence issues"
+      ],
+      "priority": 4,
+      "status": "pending",
+      "notes": "User-friendly persistence interface. Makes checkpoint/resume functionality easily accessible through familiar MetaPlanner API."
+    }
+  ]
+}

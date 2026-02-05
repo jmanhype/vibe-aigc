@@ -1,9 +1,10 @@
 """Workflow execution engine for running WorkflowPlans."""
 
 import asyncio
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Optional
 from datetime import datetime
 from enum import Enum
+import time
 
 from .models import WorkflowPlan, WorkflowNode, WorkflowNodeType
 
@@ -22,7 +23,7 @@ class NodeResult:
     """Result of executing a single WorkflowNode."""
 
     def __init__(self, node_id: str, status: ExecutionStatus,
-                 result: Any = None, error: str = None, duration: float = 0.0):
+                 result: Any = None, error: Optional[str] = None, duration: float = 0.0):
         self.node_id = node_id
         self.status = status
         self.result = result
@@ -32,15 +33,17 @@ class NodeResult:
 
 
 class ExecutionResult:
-    """Complete result of WorkflowPlan execution."""
+    """Complete result of WorkflowPlan execution with parallel tracking."""
 
     def __init__(self, plan_id: str):
         self.plan_id = plan_id
         self.status = ExecutionStatus.PENDING
         self.node_results: Dict[str, NodeResult] = {}
         self.started_at = datetime.now().isoformat()
-        self.completed_at: str = None
+        self.completed_at: Optional[str] = None
         self.total_duration: float = 0.0
+        self.parallel_efficiency: float = 0.0  # New field for tracking parallel execution benefits
+        self.execution_groups: List[List[str]] = []  # New field for tracking parallel execution groups
 
     def add_node_result(self, result: NodeResult):
         """Add result for a completed node."""
@@ -67,8 +70,20 @@ class ExecutionResult:
             "failed": failed,
             "total_duration": self.total_duration,
             "started_at": self.started_at,
-            "completed_at": self.completed_at
+            "completed_at": self.completed_at,
+            "parallel_efficiency": self.parallel_efficiency,
+            "execution_groups": len(self.execution_groups)
         }
+
+    def calculate_parallel_efficiency(self) -> float:
+        """Calculate efficiency gained from parallel execution."""
+        if not self.node_results:
+            return 0.0
+
+        total_node_duration = sum(r.duration for r in self.node_results.values())
+        actual_duration = self.total_duration
+
+        return max(0.0, (total_node_duration - actual_duration) / total_node_duration) if total_node_duration > 0 else 0.0
 
 
 class WorkflowExecutor:
@@ -84,22 +99,33 @@ class WorkflowExecutor:
         }
 
     async def execute_plan(self, plan: WorkflowPlan) -> ExecutionResult:
-        """Execute a complete WorkflowPlan."""
+        """Execute a complete WorkflowPlan with parallel execution of independent nodes."""
 
         result = ExecutionResult(plan.id)
         result.status = ExecutionStatus.RUNNING
 
+        start_time = time.time()
         execution_failed = False
 
         try:
-            # Execute root nodes (for now, sequentially)
-            for node in plan.root_nodes:
+            # Group independent root nodes for parallel execution
+            parallel_groups = self._build_parallel_execution_groups(plan.root_nodes, result)
+            result.execution_groups = [[node.id for node in group] for group in parallel_groups]
+
+            # Execute each parallel group in sequence, nodes within groups in parallel
+            for group in parallel_groups:
+                group_tasks = [
+                    self._execute_node_tree(node, result)
+                    for node in group
+                ]
                 try:
-                    await self._execute_node_tree(node, result)
+                    await asyncio.gather(*group_tasks, return_exceptions=True)
                 except Exception as e:
                     execution_failed = True
-                    # Mark this tree as failed, but continue with other roots
-                    self._mark_tree_failed(node, result, str(e))
+                    # Mark failed nodes, continue with remaining groups
+                    for node in group:
+                        if node.id not in result.node_results:
+                            self._mark_tree_failed(node, result, str(e))
 
             # Determine final status based on whether any nodes failed
             if execution_failed or any(r.status == ExecutionStatus.FAILED for r in result.node_results.values()):
@@ -118,8 +144,9 @@ class WorkflowExecutor:
             for node in plan.root_nodes:
                 self._mark_tree_failed(node, result, str(e))
 
-        # Calculate total duration
-        result.total_duration = sum(r.duration for r in result.node_results.values())
+        # Calculate durations and parallel efficiency
+        result.total_duration = time.time() - start_time
+        result.parallel_efficiency = result.calculate_parallel_efficiency()
 
         return result
 
@@ -147,9 +174,15 @@ class WorkflowExecutor:
                 result=node_result, duration=duration
             ))
 
-            # Execute children sequentially
-            for child in node.children:
-                await self._execute_node_tree(child, result)
+            # Execute children in parallel groups
+            if node.children:
+                child_groups = self._build_parallel_execution_groups(node.children, result)
+                for group in child_groups:
+                    child_tasks = [
+                        self._execute_node_tree(child, result)
+                        for child in group
+                    ]
+                    await asyncio.gather(*child_tasks, return_exceptions=True)
 
         except Exception as e:
             duration = asyncio.get_event_loop().time() - start_time
@@ -178,6 +211,55 @@ class WorkflowExecutor:
 
         for child in node.children:
             self._mark_tree_failed(child, result, error)
+
+    def _build_parallel_execution_groups(self, nodes: List[WorkflowNode], result: ExecutionResult) -> List[List[WorkflowNode]]:
+        """Group nodes into parallel execution batches based on dependencies.
+
+        Uses topological sorting to identify parallelizable groups where each group
+        can execute in parallel, but groups must execute in sequence.
+        """
+        if not nodes:
+            return []
+
+        # Build dependency graph - use node IDs instead of nodes for hashability
+        node_map = {node.id: node for node in nodes}
+        groups = []
+        remaining_node_ids = {node.id for node in nodes}
+        processed_nodes = set()
+
+        # Add already completed nodes to processed set
+        for node_id in result.node_results:
+            if result.node_results[node_id].status == ExecutionStatus.COMPLETED:
+                processed_nodes.add(node_id)
+
+        while remaining_node_ids:
+            # Find nodes with no unprocessed dependencies
+            ready_node_ids = []
+            for node_id in remaining_node_ids:
+                node = node_map[node_id]
+                # Check if all dependencies are either processed or not in our scope
+                dependencies_satisfied = all(
+                    dep_id in processed_nodes or dep_id not in node_map
+                    for dep_id in node.dependencies
+                )
+                if dependencies_satisfied:
+                    ready_node_ids.append(node_id)
+
+            if not ready_node_ids:
+                # This shouldn't happen with valid dependency graphs, but handle gracefully
+                # Break circular dependencies by taking the first remaining node
+                ready_node_ids = [next(iter(remaining_node_ids))]
+
+            # Convert node IDs back to nodes for this group
+            ready_nodes = [node_map[node_id] for node_id in ready_node_ids]
+            groups.append(ready_nodes)
+
+            # Mark these nodes as ready to be processed
+            for node_id in ready_node_ids:
+                remaining_node_ids.remove(node_id)
+                processed_nodes.add(node_id)
+
+        return groups
 
     # Basic node type handlers (mock implementations for Phase 3)
 

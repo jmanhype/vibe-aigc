@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "002-advanced-execution-feedback",
+  "title": "Advanced Execution with Feedback Loops and Adaptive Planning",
+  "section": "core",
+  "state": "implementing",
+  "overview": "Implement the feedback loop mechanism from the Vibe AIGC paper (arXiv:2602.04575). Add adaptive planning that can refine workflows based on execution results, implement parallel execution for independent nodes, and add workflow visualization.\n\n**Motivation:** The paper's architecture shows a feedback loop from execution back to the Meta-Planner. This enables adaptive workflows that can recover from failures and optimize based on results.\n\n**Success criteria:**\n- Feedback mechanism that sends execution results back to MetaPlanner\n- Adaptive replanning when nodes fail\n- Parallel execution of independent workflow nodes\n- Workflow visualization (ASCII/Mermaid diagrams)\n- Progress callbacks during execution\n- Workflow persistence and resume capability\n\n**Technical constraints:**\n- Must integrate with existing MetaPlanner and WorkflowExecutor\n- Use asyncio.gather for parallel execution\n- Maintain backward compatibility with existing API",
+  "branch": null,
+  "pr_url": null,
+  "pr_number": null,
+  "last_error": null,
+  "created_at": "2026-02-05T08:23:00.000Z",
+  "updated_at": "2026-02-05T14:33:33.691Z",
+  "problem_statement": "Current implementation executes workflows linearly without feedback. Need adaptive planning that can respond to execution results and optimize workflows dynamically.",
+  "motivation": "Complete the Vibe AIGC architecture with feedback loops for truly adaptive content generation.",
+  "success_criteria": [
+    "Feedback mechanism sending execution results to MetaPlanner",
+    "Adaptive replanning on node failures",
+    "Parallel execution of independent nodes using asyncio.gather",
+    "ASCII/Mermaid workflow visualization",
+    "Progress callbacks during execution",
+    "Workflow state persistence and resume"
+  ],
+  "technical_constraints": [
+    "Integrate with existing MetaPlanner and WorkflowExecutor",
+    "Use asyncio.gather for parallel execution",
+    "Maintain backward compatibility",
+    "No new external dependencies beyond existing"
+  ]
+}
