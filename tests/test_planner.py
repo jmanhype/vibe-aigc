@@ -143,5 +143,128 @@ class TestMetaPlanner:
 
         assert result["status"] == "completed"
         assert result["vibe_description"] == "Test vibe"
-        assert result["total_tasks"] == 1
-        assert result["estimated_duration"] == 30
+
+        # Check execution summary
+        execution_summary = result["execution_summary"]
+        assert execution_summary["total_nodes"] == 1
+        assert execution_summary["completed"] == 1
+        assert execution_summary["failed"] == 0
+
+        # Check node results
+        node_results = result["node_results"]
+        assert "task-001" in node_results
+        assert node_results["task-001"]["status"] == "completed"
+
+    @patch('vibe_aigc.planner.LLMClient')
+    async def test_node_type_mapping_and_validation(self, mock_llm_client):
+        """Test node type mapping and parameter preservation."""
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.decompose_vibe.return_value = {
+            "id": "plan-node-types",
+            "root_nodes": [
+                {
+                    "id": "analyze-task",
+                    "type": "analyze",  # Should map to WorkflowNodeType.ANALYZE
+                    "description": "Analyze user requirements",
+                    "parameters": {"depth": "comprehensive", "focus": "constraints"},
+                    "dependencies": [],
+                    "children": [],
+                    "estimated_duration": 45
+                },
+                {
+                    "id": "invalid-type-task",
+                    "type": "unknown_type",  # Should default to GENERATE
+                    "description": "Task with invalid type",
+                    "parameters": {"fallback": True},
+                    "dependencies": ["analyze-task"],
+                    "children": [],
+                    "estimated_duration": 30
+                }
+            ]
+        }
+        mock_llm_client.return_value = mock_client_instance
+
+        planner = MetaPlanner()
+        vibe = Vibe(description="Test node type mapping")
+
+        plan = await planner.plan(vibe)
+
+        # Verify node type mapping
+        analyze_node = plan.root_nodes[0]
+        assert analyze_node.type == WorkflowNodeType.ANALYZE
+        assert analyze_node.parameters == {"depth": "comprehensive", "focus": "constraints"}
+        assert analyze_node.dependencies == []
+
+        # Verify fallback for invalid types
+        invalid_node = plan.root_nodes[1]
+        assert invalid_node.type == WorkflowNodeType.GENERATE  # Should default
+        assert invalid_node.dependencies == ["analyze-task"]
+        assert invalid_node.parameters == {"fallback": True}
+
+        # Verify duration calculation
+        assert plan.estimated_total_duration == 75  # 45 + 30
+
+    @patch('vibe_aigc.planner.LLMClient')
+    async def test_hierarchical_duration_calculation(self, mock_llm_client):
+        """Test recursive duration calculation for nested nodes."""
+
+        mock_client_instance = AsyncMock()
+        mock_client_instance.decompose_vibe.return_value = {
+            "root_nodes": [
+                {
+                    "id": "parent-task",
+                    "type": "composite",
+                    "description": "Parent task with children",
+                    "parameters": {},
+                    "dependencies": [],
+                    "children": [
+                        {
+                            "id": "child-1",
+                            "type": "analyze",
+                            "description": "Child task 1",
+                            "parameters": {},
+                            "dependencies": [],
+                            "children": [
+                                {
+                                    "id": "grandchild-1",
+                                    "type": "validate",
+                                    "description": "Grandchild task",
+                                    "parameters": {},
+                                    "dependencies": [],
+                                    "children": [],
+                                    "estimated_duration": 10
+                                }
+                            ],
+                            "estimated_duration": 20
+                        },
+                        {
+                            "id": "child-2",
+                            "type": "generate",
+                            "description": "Child task 2",
+                            "parameters": {},
+                            "dependencies": ["child-1"],
+                            "children": [],
+                            "estimated_duration": 30
+                        }
+                    ],
+                    "estimated_duration": 40
+                }
+            ]
+        }
+        mock_llm_client.return_value = mock_client_instance
+
+        planner = MetaPlanner()
+        vibe = Vibe(description="Test hierarchical duration")
+
+        plan = await planner.plan(vibe)
+
+        # Total should be 40 (parent) + 20 (child-1) + 10 (grandchild) + 30 (child-2) = 100
+        assert plan.estimated_total_duration == 100
+
+        # Verify hierarchical structure is preserved
+        parent = plan.root_nodes[0]
+        assert len(parent.children) == 2
+        assert parent.children[0].id == "child-1"
+        assert len(parent.children[0].children) == 1
+        assert parent.children[0].children[0].id == "grandchild-1"

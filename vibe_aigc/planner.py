@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from .models import Vibe, WorkflowPlan, WorkflowNode, WorkflowNodeType
 from .llm import LLMClient, LLMConfig
+from .executor import WorkflowExecutor, ExecutionResult
 
 
 class MetaPlanner:
@@ -13,6 +14,7 @@ class MetaPlanner:
 
     def __init__(self, llm_config: Optional[LLMConfig] = None):
         self.llm_client = LLMClient(llm_config)
+        self.executor = WorkflowExecutor()
 
     async def plan(self, vibe: Vibe) -> WorkflowPlan:
         """Generate a WorkflowPlan from a Vibe using LLM decomposition."""
@@ -43,21 +45,46 @@ class MetaPlanner:
         )
 
     async def execute(self, vibe: Vibe) -> Dict[str, Any]:
-        """Plan and execute a Vibe workflow (basic implementation)."""
+        """Plan and execute a Vibe workflow with full execution engine."""
 
         # Generate execution plan
         plan = await self.plan(vibe)
 
-        # For now, return the plan structure as the "result"
-        # Phase 3 will implement actual execution
+        # Execute the plan
+        execution_result = await self.executor.execute_plan(plan)
+
+        # Format result for API compatibility
+        summary = execution_result.get_summary()
+
         return {
-            "status": "completed",
-            "plan_id": plan.id,
+            "status": summary["status"],
+            "plan_id": summary["plan_id"],
             "vibe_description": vibe.description,
-            "total_tasks": len(plan.root_nodes),
-            "estimated_duration": plan.estimated_total_duration,
-            "execution_summary": "Plan generated successfully (execution engine pending)"
+            "execution_summary": {
+                "total_nodes": summary["total_nodes"],
+                "completed": summary["completed"],
+                "failed": summary["failed"],
+                "total_duration": summary["total_duration"],
+                "started_at": summary["started_at"],
+                "completed_at": summary["completed_at"]
+            },
+            "node_results": {
+                node_id: {
+                    "status": result.status.value,
+                    "result": result.result,
+                    "error": result.error,
+                    "duration": result.duration
+                }
+                for node_id, result in execution_result.node_results.items()
+            }
         }
+
+    async def plan_and_execute(self, vibe: Vibe) -> tuple[WorkflowPlan, ExecutionResult]:
+        """Get both the plan and execution result (for detailed analysis)."""
+
+        plan = await self.plan(vibe)
+        execution_result = await self.executor.execute_plan(plan)
+        return plan, execution_result
 
     def _build_workflow_node(self, node_data: Dict[str, Any]) -> WorkflowNode:
         """Convert LLM response data to WorkflowNode structure."""
