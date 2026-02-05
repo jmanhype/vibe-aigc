@@ -99,6 +99,9 @@ __all__ = [
     # Asset Bank
     "AssetBank", "Character", "StyleGuide", "Artifact", "create_asset_bank"
 ]
+# Model Registry - Auto-detect available models
+from .model_registry import ModelRegistry, ModelCapability, ModelFamily, ModelSpec
+
 # ComfyUI backend for actual image generation
 from .comfyui import ComfyUIBackend, ComfyUIConfig, ComfyUIImageTool, create_comfyui_registry
 

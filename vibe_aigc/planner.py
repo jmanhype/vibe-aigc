@@ -11,6 +11,7 @@ from .visualization import WorkflowVisualizer, VisualizationFormat
 from .persistence import WorkflowCheckpoint, WorkflowPersistenceManager
 from .knowledge import KnowledgeBase, create_knowledge_base
 from .tools import ToolRegistry, create_default_registry
+from .model_registry import ModelRegistry, ModelCapability
 
 
 class MetaPlanner:
@@ -21,7 +22,9 @@ class MetaPlanner:
                  checkpoint_interval: Optional[int] = None,
                  checkpoint_dir: str = ".vibe_checkpoints",
                  knowledge_base: Optional[KnowledgeBase] = None,
-                 tool_registry: Optional[ToolRegistry] = None):
+                 tool_registry: Optional[ToolRegistry] = None,
+                 model_registry: Optional[ModelRegistry] = None,
+                 comfyui_url: str = "http://127.0.0.1:8188"):
         """Initialize MetaPlanner.
 
         Args:
@@ -31,6 +34,8 @@ class MetaPlanner:
             checkpoint_dir: Directory for checkpoint storage
             knowledge_base: Domain-specific expert knowledge (Paper Section 5.3)
             tool_registry: Atomic tool library for content generation (Paper Section 5.4)
+            model_registry: Auto-detected model capabilities (local enhancement)
+            comfyui_url: ComfyUI server URL for model detection
         """
         self.llm_client = LLMClient(llm_config)
         
@@ -39,6 +44,10 @@ class MetaPlanner:
         
         # Paper Section 5.4: Atomic Tool Library
         self.tool_registry = tool_registry or create_default_registry()
+        
+        # Local enhancement: Dynamic model registry
+        self.model_registry = model_registry or ModelRegistry(comfyui_url=comfyui_url)
+        self._models_initialized = False
         
         self.executor = WorkflowExecutor(
             progress_callback, checkpoint_interval, checkpoint_dir,
@@ -50,6 +59,19 @@ class MetaPlanner:
         self.checkpoint_dir = checkpoint_dir
         self._persistence_manager = WorkflowPersistenceManager(checkpoint_dir)
 
+    async def refresh_models(self) -> None:
+        """Refresh available models from ComfyUI."""
+        await self.model_registry.refresh()
+        self._models_initialized = True
+    
+    def get_model_capabilities(self) -> List[ModelCapability]:
+        """Get list of available model capabilities."""
+        return self.model_registry.get_capabilities()
+    
+    def get_best_model(self, capability: ModelCapability, max_vram: float = 8.0):
+        """Get best model for a capability."""
+        return self.model_registry.get_best_for(capability, max_vram)
+
     async def plan(self, vibe: Vibe) -> WorkflowPlan:
         """Generate a WorkflowPlan from a Vibe using LLM decomposition.
         
@@ -57,7 +79,15 @@ class MetaPlanner:
         1. Query knowledge base for domain expertise (Section 5.3)
         2. Use MetaPlanner (LLM) to decompose Vibe into workflow (Section 5.2)
         3. Map workflow nodes to available tools (Section 5.4)
+        4. Consider available local models (local enhancement)
         """
+        
+        # Local enhancement: Ensure model registry is initialized
+        if not self._models_initialized:
+            try:
+                await self.refresh_models()
+            except Exception:
+                pass  # Continue without models if ComfyUI unavailable
 
         try:
             # Paper Section 5.3: Query domain knowledge for intent understanding
@@ -66,6 +96,18 @@ class MetaPlanner:
             
             # Paper Section 5.4: Get available tools for the planner to reference
             tools_context = self.tool_registry.to_prompt_context()
+            
+            # Local enhancement: Add model capabilities context
+            model_context = ""
+            if self._models_initialized:
+                caps = self.model_registry.get_capabilities()
+                if caps:
+                    model_context = "\n\nAvailable model capabilities:\n"
+                    for cap in caps:
+                        best = self.model_registry.get_best_for(cap)
+                        if best:
+                            model_context += f"- {cap.value}: {best.name} (quality {best.quality_tier}/10)\n"
+                tools_context += model_context
             
             # Get structured decomposition from LLM with enhanced context
             plan_data = await self.llm_client.decompose_vibe(
