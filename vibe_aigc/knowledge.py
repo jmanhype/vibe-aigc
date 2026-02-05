@@ -64,6 +64,10 @@ class KnowledgeBase:
         self._load_design_knowledge()
         self._load_music_knowledge()
         self._load_visual_generation_knowledge()
+        self._load_animation_knowledge()
+        self._load_audio_knowledge()
+        self._load_character_knowledge()
+        self._load_environment_knowledge()
     
     def _load_film_knowledge(self) -> None:
         """Film/video production knowledge."""
@@ -445,6 +449,370 @@ class KnowledgeBase:
         ])
         
         self._domains["visual"] = visual
+    
+    def _load_animation_knowledge(self) -> None:
+        """Animation and motion knowledge."""
+        anim = DomainKnowledge(domain="animation")
+        
+        anim.add_concept(
+            name="sakuga",
+            description="High-quality Japanese animation with fluid motion",
+            technical_specs={
+                "frame_rate": "24fps with variable timing (1s, 2s, 3s)",
+                "key_poses": ["anticipation", "follow-through", "squash and stretch"],
+                "effects": ["impact frames", "smear frames", "speed lines"],
+                "artists": ["Yutaka Nakamura", "Norio Matsumoto", "Hiroyuki Imaishi"]
+            },
+            examples=["One Punch Man", "Mob Psycho 100", "Demon Slayer"]
+        )
+        
+        anim.add_concept(
+            name="disney style",
+            description="Classic Western animation principles",
+            technical_specs={
+                "principles": ["squash and stretch", "anticipation", "staging", 
+                              "follow through", "slow in/out", "arcs", "secondary action",
+                              "timing", "exaggeration", "solid drawing", "appeal"],
+                "frame_rate": "24fps on ones or twos",
+                "characteristics": ["smooth motion", "expressive faces", "musical timing"]
+            },
+            examples=["The Little Mermaid", "Beauty and the Beast", "Aladdin"]
+        )
+        
+        anim.add_concept(
+            name="rotoscope",
+            description="Animation traced from live-action footage",
+            technical_specs={
+                "workflow": ["film reference footage", "trace key frames", "interpolate"],
+                "use_cases": ["realistic motion", "dance sequences", "complex action"],
+                "tools": ["reference video", "onion skinning"]
+            },
+            examples=["A Scanner Darkly", "Waking Life", "Undone"]
+        )
+        
+        anim.add_concept(
+            name="limited animation",
+            description="Cost-effective animation with fewer frames",
+            technical_specs={
+                "techniques": ["held frames", "mouth flaps only", "sliding cels", 
+                              "repeated cycles", "still backgrounds"],
+                "frame_rate": "8-12 fps effective",
+                "style": "emphasizes design over motion"
+            },
+            examples=["South Park", "Archer", "early Hanna-Barbera"]
+        )
+        
+        anim.add_concept(
+            name="smooth animation",
+            description="Fluid, high frame-rate animation",
+            technical_specs={
+                "frame_rate": "24-60fps on ones",
+                "interpolation": "ease in/out on all movements",
+                "motion_blur": "natural blur on fast movements",
+                "animatediff_settings": {"frames": 16, "fps": 8, "motion_scale": 1.0}
+            }
+        )
+        
+        # Techniques
+        anim.add_technique("walk cycle", [
+            "Contact pose: heel strikes ground",
+            "Down pose: body at lowest point",
+            "Passing pose: legs cross",
+            "Up pose: body at highest point",
+            "Loop seamlessly (8-16 frames typical)"
+        ])
+        
+        anim.add_technique("anticipation", [
+            "Move opposite to intended action direction",
+            "Compress/wind up before release",
+            "Holds for 2-4 frames before main action",
+            "Bigger anticipation = more powerful action"
+        ])
+        
+        self._domains["animation"] = anim
+    
+    def _load_audio_knowledge(self) -> None:
+        """Audio and sound design knowledge."""
+        audio = DomainKnowledge(domain="audio")
+        
+        audio.add_concept(
+            name="ambient",
+            description="Background environmental soundscapes",
+            technical_specs={
+                "elements": ["room tone", "environmental sounds", "distant activity"],
+                "mixing": "low in mix, constant, non-distracting",
+                "layers": ["base drone", "mid-frequency detail", "occasional accents"],
+                "music_gen_prompt": "ambient, atmospheric, ethereal, minimal, spacious"
+            },
+            examples=["Brian Eno", "Aphex Twin Selected Ambient Works"]
+        )
+        
+        audio.add_concept(
+            name="lo-fi",
+            description="Low-fidelity aesthetic with warmth and imperfection",
+            technical_specs={
+                "characteristics": ["vinyl crackle", "tape hiss", "bit reduction", 
+                                   "low-pass filter", "subtle pitch wobble"],
+                "tempo": "70-90 BPM",
+                "elements": ["jazz chords", "hip-hop beats", "ambient pads"],
+                "music_gen_prompt": "lo-fi hip hop, chill, relaxing, vinyl crackle, jazz piano"
+            },
+            examples=["ChilledCow", "Nujabes", "J Dilla"]
+        )
+        
+        audio.add_concept(
+            name="horror",
+            description="Unsettling, tension-building audio",
+            technical_specs={
+                "techniques": ["dissonance", "sudden silence", "infrasound", 
+                              "reversed audio", "distorted voices"],
+                "elements": ["drones", "metallic scrapes", "heartbeat", "breathing"],
+                "music_gen_prompt": "dark ambient, horror, unsettling, dissonant, tension"
+            },
+            examples=["Akira Yamaoka", "Goblin", "John Carpenter"]
+        )
+        
+        audio.add_concept(
+            name="epic orchestral",
+            description="Grand cinematic orchestral sound",
+            technical_specs={
+                "instruments": ["full orchestra", "choir", "taiko drums", "brass fanfares"],
+                "dynamics": "piano to fortissimo swells",
+                "structure": ["quiet intro", "building tension", "climactic peak"],
+                "music_gen_prompt": "epic orchestral, cinematic, heroic, brass, choir, drums"
+            },
+            examples=["Hans Zimmer", "Two Steps From Hell", "Audiomachine"]
+        )
+        
+        audio.add_concept(
+            name="synthwave",
+            description="Retro 80s synthesizer aesthetic",
+            technical_specs={
+                "instruments": ["analog synths", "arpeggiated basslines", "gated reverb drums"],
+                "tempo": "100-120 BPM",
+                "effects": ["heavy reverb", "chorus", "side-chain compression"],
+                "music_gen_prompt": "synthwave, retro, 80s, neon, analog synth, driving beat"
+            },
+            examples=["Kavinsky", "Carpenter Brut", "Perturbator"]
+        )
+        
+        # Techniques
+        audio.add_technique("sound layering", [
+            "Start with base/fundamental sound",
+            "Add mid-frequency body layer",
+            "Add high-frequency detail/air",
+            "Add transient/attack layer if needed",
+            "EQ each layer to its own frequency space"
+        ])
+        
+        audio.add_technique("tension building", [
+            "Start sparse and quiet",
+            "Gradually add layers",
+            "Increase tempo or rhythm density",
+            "Rise in pitch/frequency",
+            "Cut to silence before climax"
+        ])
+        
+        self._domains["audio"] = audio
+    
+    def _load_character_knowledge(self) -> None:
+        """Character design and archetype knowledge."""
+        char = DomainKnowledge(domain="character")
+        
+        char.add_concept(
+            name="protagonist",
+            description="Main character the audience follows",
+            technical_specs={
+                "visual_traits": ["distinctive silhouette", "warm colors", "open posture"],
+                "design_principles": ["relatable flaws", "clear goals", "room to grow"],
+                "sd_prompt_tags": ["protagonist", "hero", "determined expression", "dynamic pose"]
+            }
+        )
+        
+        char.add_concept(
+            name="antagonist",
+            description="Character opposing the protagonist",
+            technical_specs={
+                "visual_traits": ["angular shapes", "cool/dark colors", "imposing silhouette"],
+                "design_principles": ["mirror protagonist", "understandable motivation", "threatening presence"],
+                "sd_prompt_tags": ["villain", "antagonist", "menacing", "dark colors", "imposing"]
+            }
+        )
+        
+        char.add_concept(
+            name="femme fatale",
+            description="Mysterious, seductive dangerous woman archetype",
+            technical_specs={
+                "visual_traits": ["elegant silhouette", "red/black palette", "confident pose"],
+                "characteristics": ["mysterious", "intelligent", "morally ambiguous"],
+                "sd_prompt_tags": ["femme fatale", "elegant", "mysterious", "noir", "confident"]
+            },
+            examples=["Basic Instinct", "Double Indemnity", "LA Confidential"]
+        )
+        
+        char.add_concept(
+            name="wise mentor",
+            description="Guide figure who helps protagonist",
+            technical_specs={
+                "visual_traits": ["aged appearance", "calm expression", "simple clothing"],
+                "characteristics": ["experienced", "cryptic", "sacrificial"],
+                "sd_prompt_tags": ["wise old man", "mentor", "sage", "calm", "knowing expression"]
+            },
+            examples=["Gandalf", "Obi-Wan", "Dumbledore"]
+        )
+        
+        char.add_concept(
+            name="kawaii",
+            description="Japanese cute aesthetic for characters",
+            technical_specs={
+                "visual_traits": ["large eyes", "small nose/mouth", "round face", "pastel colors"],
+                "proportions": ["large head", "small body", "stubby limbs"],
+                "sd_prompt_tags": ["kawaii", "cute", "chibi", "big eyes", "pastel colors", "adorable"]
+            }
+        )
+        
+        char.add_concept(
+            name="gritty realistic",
+            description="Grounded, realistic character design",
+            technical_specs={
+                "visual_traits": ["weathered appearance", "practical clothing", "visible wear"],
+                "characteristics": ["flawed", "scarred", "tired eyes"],
+                "sd_prompt_tags": ["realistic", "gritty", "weathered", "detailed skin", "imperfect"]
+            },
+            examples=["The Last of Us", "Mad Max", "Logan"]
+        )
+        
+        # Techniques
+        char.add_technique("character silhouette", [
+            "Design should be recognizable as black silhouette",
+            "Unique shape language per character",
+            "Avoid generic proportions",
+            "Test: can you identify character from shadow alone?"
+        ])
+        
+        char.add_technique("color coding", [
+            "Assign primary color to character",
+            "Color reflects personality (red=passionate, blue=calm)",
+            "Maintain consistency across appearances",
+            "Use color to show character development"
+        ])
+        
+        self._domains["character"] = char
+    
+    def _load_environment_knowledge(self) -> None:
+        """Environment and setting knowledge."""
+        env = DomainKnowledge(domain="environment")
+        
+        env.add_concept(
+            name="urban decay",
+            description="Deteriorating city environments",
+            technical_specs={
+                "elements": ["graffiti", "broken windows", "overgrown plants", "rust", "debris"],
+                "lighting": ["harsh shadows", "flickering lights", "orange sodium lamps"],
+                "atmosphere": ["hazy", "dusty", "smoggy"],
+                "sd_prompt_tags": ["urban decay", "abandoned", "overgrown", "graffiti", 
+                                   "broken windows", "rust", "dystopian"]
+            },
+            examples=["The Last of Us", "Fallout", "District 9"]
+        )
+        
+        env.add_concept(
+            name="cozy interior",
+            description="Warm, inviting indoor spaces",
+            technical_specs={
+                "elements": ["soft lighting", "warm colors", "plants", "books", "textiles"],
+                "lighting": ["golden hour", "lamp light", "fireplace glow"],
+                "atmosphere": ["intimate", "safe", "lived-in"],
+                "sd_prompt_tags": ["cozy", "warm lighting", "interior", "comfortable", 
+                                   "plants", "books", "soft textures"]
+            },
+            examples=["Studio Ghibli interiors", "Hygge aesthetic"]
+        )
+        
+        env.add_concept(
+            name="alien landscape",
+            description="Otherworldly, non-Earth environments",
+            technical_specs={
+                "elements": ["unusual rock formations", "strange vegetation", "multiple moons",
+                            "bioluminescence", "impossible geometry"],
+                "colors": ["non-natural palette", "purple skies", "green suns"],
+                "atmosphere": ["mysterious", "vast", "inhospitable"],
+                "sd_prompt_tags": ["alien planet", "otherworldly", "sci-fi landscape",
+                                   "strange vegetation", "multiple moons", "bioluminescent"]
+            },
+            examples=["Avatar Pandora", "Dune Arrakis", "No Man's Sky"]
+        )
+        
+        env.add_concept(
+            name="gothic architecture",
+            description="Medieval European dark architectural style",
+            technical_specs={
+                "elements": ["pointed arches", "flying buttresses", "gargoyles", 
+                            "stained glass", "vaulted ceilings", "spires"],
+                "lighting": ["dramatic shadows", "candlelight", "shafts of light"],
+                "atmosphere": ["imposing", "sacred", "mysterious"],
+                "sd_prompt_tags": ["gothic architecture", "cathedral", "dark fantasy",
+                                   "stone walls", "stained glass", "dramatic lighting"]
+            },
+            examples=["Dark Souls", "Castlevania", "Notre-Dame"]
+        )
+        
+        env.add_concept(
+            name="neon city",
+            description="Futuristic urban nightscape with neon lighting",
+            technical_specs={
+                "elements": ["neon signs", "holograms", "flying vehicles", "rain",
+                            "crowded streets", "towering buildings"],
+                "lighting": ["neon glow", "reflections", "volumetric fog"],
+                "atmosphere": ["busy", "overwhelming", "anonymous"],
+                "sd_prompt_tags": ["neon city", "cyberpunk", "night city", "rain",
+                                   "neon signs", "futuristic", "crowded streets"]
+            },
+            examples=["Blade Runner", "Ghost in the Shell", "Akira"]
+        )
+        
+        env.add_concept(
+            name="pastoral",
+            description="Idyllic countryside and nature",
+            technical_specs={
+                "elements": ["rolling hills", "meadows", "streams", "cottages", "farmland"],
+                "lighting": ["golden hour", "soft clouds", "dappled sunlight"],
+                "atmosphere": ["peaceful", "nostalgic", "timeless"],
+                "sd_prompt_tags": ["pastoral", "countryside", "meadow", "golden hour",
+                                   "peaceful", "nature", "idyllic"]
+            },
+            examples=["Studio Ghibli landscapes", "Constable paintings"]
+        )
+        
+        env.add_concept(
+            name="underwater",
+            description="Subaquatic environments",
+            technical_specs={
+                "elements": ["coral", "fish", "caustic light patterns", "bubbles", "kelp"],
+                "lighting": ["blue/green tint", "god rays from surface", "bioluminescence"],
+                "atmosphere": ["weightless", "mysterious", "alien"],
+                "sd_prompt_tags": ["underwater", "ocean", "coral reef", "fish",
+                                   "caustic lighting", "blue", "subaquatic"]
+            },
+            examples=["Finding Nemo", "Subnautica", "The Abyss"]
+        )
+        
+        # Techniques
+        env.add_technique("establishing atmosphere", [
+            "Start with lighting direction and color temperature",
+            "Add atmospheric effects (fog, dust, rain)",
+            "Include environmental storytelling details",
+            "Layer foreground, midground, background elements"
+        ])
+        
+        env.add_technique("depth cues", [
+            "Overlap elements front to back",
+            "Use atmospheric perspective (distant = hazier)",
+            "Decrease detail with distance",
+            "Cool colors recede, warm colors advance"
+        ])
+        
+        self._domains["environment"] = env
     
     def register_domain(self, knowledge: DomainKnowledge) -> None:
         """Register a custom domain knowledge module."""
