@@ -32,11 +32,17 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
+docs = [
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
+    "pymdown-extensions>=10.0.0",
+]
 
 [project.urls]
-Homepage = "https://github.com/jmanhype/vibe-aigc"
+Homepage = "https://jmanhype.github.io/vibe-aigc"
 Repository = "https://github.com/jmanhype/vibe-aigc"
-Documentation = "https://github.com/jmanhype/vibe-aigc#readme"
+Documentation = "https://jmanhype.github.io/vibe-aigc"
+Changelog = "https://jmanhype.github.io/vibe-aigc/changelog"
 Issues = "https://github.com/jmanhype/vibe-aigc/issues"
 
 [tool.pytest.ini_options]
