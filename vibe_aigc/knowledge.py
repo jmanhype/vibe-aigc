@@ -112,11 +112,154 @@ class KnowledgeBase:
             name="noir",
             description="Dark, moody visual style from 1940s crime films",
             technical_specs={
-                "lighting": ["low-key", "venetian blind shadows", "single source"],
-                "color": ["desaturated", "high contrast", "black and white optional"],
-                "composition": ["dutch angles", "deep shadows", "silhouettes"],
-                "mood": ["cynical", "fatalistic", "morally ambiguous"]
-            }
+                "lighting": ["low-key", "venetian blind shadows", "single source", "chiaroscuro"],
+                "color_grading": ["black and white", "high contrast", "crushed blacks", "silver gelatin look"],
+                "composition": ["dutch angles", "deep shadows", "silhouettes", "framing through doorways"],
+                "mood": ["cynical", "fatalistic", "morally ambiguous"],
+                "sd_prompt_tags": ["film noir", "black and white", "dramatic shadows", "venetian blinds",
+                                   "1940s", "detective", "femme fatale", "high contrast"]
+            },
+            examples=["Double Indemnity", "The Maltese Falcon", "The Third Man", "Chinatown"]
+        )
+        
+        film.add_concept(
+            name="blade runner",
+            description="Neo-noir sci-fi aesthetic with neon-soaked rain and existential themes",
+            technical_specs={
+                "lighting": ["neon glow", "rain reflections", "volumetric fog", "teal-orange contrast"],
+                "color_grading": ["teal and orange", "high contrast", "crushed shadows", "neon highlights"],
+                "composition": ["wide establishing shots", "claustrophobic interiors", "eye-level conversations"],
+                "atmosphere": ["rain", "smoke", "fog", "steam vents"],
+                "sd_prompt_tags": ["blade runner", "neo-noir", "neon rain", "teal orange", "cyberpunk noir",
+                                   "dystopian", "replicant", "futuristic noir", "wet streets"]
+            },
+            examples=["Blade Runner", "Blade Runner 2049", "Dark City", "The Crow"]
+        )
+        
+        film.add_concept(
+            name="neo-noir",
+            description="Modern interpretation of noir with color and contemporary settings",
+            technical_specs={
+                "lighting": ["neon sources", "practical lights", "motivated shadows", "rim lighting"],
+                "color_grading": ["teal-orange", "desaturated midtones", "neon accents", "high contrast"],
+                "composition": ["urban landscapes", "reflective surfaces", "rain-slicked streets"],
+                "themes": ["moral ambiguity", "corruption", "doomed protagonists"],
+                "sd_prompt_tags": ["neo-noir", "modern noir", "neon noir", "crime drama",
+                                   "night city", "rain", "moody", "cinematic"]
+            },
+            examples=["Drive", "Collateral", "Nightcrawler", "Sin City"]
+        )
+        
+        film.add_concept(
+            name="cyberpunk",
+            description="High-tech dystopian future with stark class divides",
+            technical_specs={
+                "lighting": ["neon signs", "holographic displays", "harsh artificial light", "no natural light"],
+                "color_grading": ["cyan-magenta", "neon pink", "electric blue", "toxic green"],
+                "composition": ["dense vertical cities", "low angles", "overwhelming scale"],
+                "elements": ["chrome", "holograms", "augmented humans", "corporate logos"],
+                "sd_prompt_tags": ["cyberpunk", "neon city", "futuristic", "dystopian", "chrome",
+                                   "holograms", "night", "dense urban", "high tech low life"]
+            },
+            examples=["Ghost in the Shell", "Akira", "The Matrix", "Altered Carbon"]
+        )
+        
+        film.add_concept(
+            name="anime",
+            description="Japanese animation aesthetic and cinematic techniques",
+            technical_specs={
+                "lighting": ["rim light halos", "dramatic backlighting", "colored shadows"],
+                "color_grading": ["vibrant saturation", "bold primaries", "gradient skies"],
+                "composition": ["speed lines", "impact frames", "dramatic poses", "reaction shots"],
+                "editing": ["still frames for impact", "rapid cuts", "held dramatic moments"],
+                "sd_prompt_tags": ["anime", "cel shaded", "vibrant colors", "dynamic pose",
+                                   "speed lines", "dramatic lighting", "Japanese animation"]
+            },
+            examples=["Akira", "Your Name", "Spirited Away", "Attack on Titan"]
+        )
+        
+        film.add_concept(
+            name="ghibli",
+            description="Studio Ghibli's signature warm, whimsical aesthetic",
+            technical_specs={
+                "lighting": ["soft natural light", "golden hour warmth", "dappled sunlight through leaves"],
+                "color_grading": ["soft pastels", "warm earth tones", "watercolor palette", "gentle saturation"],
+                "composition": ["wide nature shots", "detailed backgrounds", "character in environment"],
+                "atmosphere": ["peaceful", "nostalgic", "magical realism"],
+                "sd_prompt_tags": ["studio ghibli", "ghibli style", "hand painted", "whimsical",
+                                   "soft colors", "nature", "miyazaki", "totoro style"]
+            },
+            examples=["My Neighbor Totoro", "Spirited Away", "Howl's Moving Castle", "Princess Mononoke"]
+        )
+        
+        film.add_concept(
+            name="horror",
+            description="Unsettling visual style designed to create fear and dread",
+            technical_specs={
+                "lighting": ["underlit faces", "flickering sources", "motivated darkness", "single harsh source"],
+                "color_grading": ["desaturated", "sickly greens", "cold blues", "high contrast"],
+                "composition": ["dutch angles", "negative space", "obscured threats", "deep shadows"],
+                "techniques": ["fog", "practical effects", "sudden reveals", "slow builds"],
+                "sd_prompt_tags": ["horror", "creepy", "dark", "fog", "desaturated",
+                                   "dutch angle", "atmospheric horror", "dread"]
+            },
+            examples=["The Shining", "Hereditary", "The Exorcist", "A Quiet Place"]
+        )
+        
+        film.add_concept(
+            name="vaporwave",
+            description="Retro-futuristic aesthetic blending 80s/90s nostalgia with surrealism",
+            technical_specs={
+                "lighting": ["neon pink/purple/cyan", "sunset gradients", "retro CRT glow"],
+                "color_grading": ["pink-purple-cyan triad", "saturated pastels", "chrome reflections"],
+                "composition": ["geometric grids", "floating objects", "Greek statues", "retro tech"],
+                "elements": ["VHS artifacts", "glitch effects", "palm trees", "dolphins", "sunsets"],
+                "sd_prompt_tags": ["vaporwave", "aesthetic", "retrowave", "80s", "pink purple cyan",
+                                   "neon", "glitch", "geometric", "retro futurism"]
+            },
+            examples=["Hotline Miami", "Far Cry 3: Blood Dragon", "Kung Fury"]
+        )
+        
+        film.add_concept(
+            name="photorealistic",
+            description="Ultra-realistic visual presentation indistinguishable from reality",
+            technical_specs={
+                "lighting": ["natural light behavior", "global illumination", "subsurface scattering"],
+                "color_grading": ["minimal grading", "accurate skin tones", "natural contrast"],
+                "technical": ["high resolution (4K/8K)", "high frame rate option", "detailed textures"],
+                "composition": ["natural framing", "realistic depth of field", "authentic motion blur"],
+                "sd_prompt_tags": ["photorealistic", "hyperrealistic", "8k uhd", "RAW photo",
+                                   "detailed skin", "subsurface scattering", "ray tracing"]
+            },
+            examples=["Avatar", "The Lion King (2019)", "Planet Earth documentaries"]
+        )
+        
+        film.add_concept(
+            name="impressionist",
+            description="Painterly visual style emphasizing light and atmosphere over detail",
+            technical_specs={
+                "lighting": ["diffused light", "color-in-shadow", "light as subject"],
+                "color_grading": ["visible color strokes", "complementary shadows", "vibrant but soft"],
+                "composition": ["en plein air framing", "everyday scenes", "emphasis on atmosphere"],
+                "texture": ["visible brushstrokes", "soft edges", "broken color"],
+                "sd_prompt_tags": ["impressionist", "painterly", "visible brushstrokes", "monet style",
+                                   "soft light", "atmospheric", "oil painting", "plein air"]
+            },
+            examples=["Loving Vincent", "What Dreams May Come", "Monet/Renoir paintings"]
+        )
+        
+        film.add_concept(
+            name="surrealist",
+            description="Dreamlike imagery that defies logical reality",
+            technical_specs={
+                "lighting": ["impossible light sources", "dramatic shadows", "theatrical"],
+                "color_grading": ["heightened reality", "symbolic color", "dreamlike palette"],
+                "composition": ["impossible geometry", "scale distortion", "juxtaposition"],
+                "elements": ["melting objects", "floating elements", "recursive imagery", "symbolic objects"],
+                "sd_prompt_tags": ["surrealist", "surrealism", "dreamlike", "dali style",
+                                   "impossible geometry", "melting", "floating", "ethereal"]
+            },
+            examples=["Eternal Sunshine of the Spotless Mind", "Pan's Labyrinth", "Mulholland Drive", "Dali paintings"]
         )
         
         # Techniques
@@ -281,16 +424,23 @@ class KnowledgeBase:
         # === AESTHETIC STYLES ===
         visual.add_concept(
             name="cyberpunk",
-            description="Futuristic dystopian aesthetic with neon and tech",
+            description="Futuristic dystopian aesthetic with neon, chrome, and high-tech urban decay",
             technical_specs={
                 "sd_prompt_tags": ["cyberpunk", "neon lights", "futuristic city", "rain", 
-                                   "holographic displays", "chrome", "dystopian"],
-                "color_palette": ["#FF00FF", "#00FFFF", "#FF0080", "#00FF80", "#1a1a2e"],
-                "lighting": ["neon glow", "rim lighting", "volumetric fog", "light rays"],
-                "composition": ["low angle", "wide shot", "reflective surfaces"],
-                "negative_prompt": ["natural lighting", "daytime", "pastoral", "bright colors"]
+                                   "holographic displays", "chrome", "dystopian", "night city",
+                                   "dense urban", "neon signs", "megacity", "high tech low life",
+                                   "augmented human", "corporate dystopia", "flying cars"],
+                "color_palette": ["#FF00FF", "#00FFFF", "#FF0080", "#00FF80", "#1a1a2e", "#39FF14"],
+                "lighting": ["neon glow", "rim lighting", "volumetric fog", "light rays",
+                            "holographic light", "advertisement screens", "no natural light"],
+                "composition": ["low angle", "wide shot", "reflective surfaces", "vertical cities",
+                               "overwhelming scale", "crowded streets", "layered depth"],
+                "elements": ["chrome surfaces", "holograms", "neon signs", "rain", "steam",
+                            "cables and wires", "augmented reality overlays"],
+                "negative_prompt": ["natural lighting", "daytime", "pastoral", "clean", "rural",
+                                   "historical", "medieval", "nature"]
             },
-            examples=["Blade Runner", "Ghost in the Shell", "Akira"]
+            examples=["Blade Runner", "Ghost in the Shell", "Akira", "Cyberpunk 2077", "The Matrix"]
         )
         
         visual.add_concept(
@@ -307,29 +457,174 @@ class KnowledgeBase:
         )
         
         visual.add_concept(
+            name="blade runner",
+            description="Neo-noir sci-fi with rain, neon, and teal-orange color grading",
+            technical_specs={
+                "sd_prompt_tags": ["blade runner", "neo-noir", "neon rain", "cyberpunk noir",
+                                   "wet streets", "neon reflections", "teal orange color grading",
+                                   "dystopian city", "replicant", "futuristic noir", "smog",
+                                   "holographic advertisements", "flying cars"],
+                "color_palette": ["#008080", "#FF6B35", "#1a1a2e", "#FF00FF", "#00FFFF"],
+                "lighting": ["neon glow", "rain reflections", "volumetric fog", "teal-orange contrast",
+                            "backlit silhouettes", "practical neon sources"],
+                "composition": ["wide establishing shots", "eye-level dialogue", "reflective puddles",
+                               "steam vents", "layered depth"],
+                "negative_prompt": ["bright", "sunny", "daytime", "cheerful", "clean", "pastoral"]
+            },
+            examples=["Blade Runner", "Blade Runner 2049", "Dark City"]
+        )
+        
+        visual.add_concept(
             name="anime",
-            description="Japanese animation style",
+            description="Japanese animation style with cel shading and dynamic energy",
             technical_specs={
                 "sd_prompt_tags": ["anime", "cel shading", "vibrant colors", 
-                                   "detailed eyes", "dramatic pose"],
-                "models": ["anything-v5", "counterfeit-v3", "waifu-diffusion"],
+                                   "detailed eyes", "dramatic pose", "speed lines",
+                                   "dynamic action", "anime lighting", "manga style"],
+                "models": ["anything-v5", "counterfeit-v3", "waifu-diffusion", "animagine-xl"],
                 "cfg_scale": 7,
-                "negative_prompt": ["realistic", "photographic", "3d render", "western"]
-            }
+                "lighting": ["rim light halos", "dramatic backlighting", "colored shadows",
+                            "anime glow", "light rays"],
+                "composition": ["dynamic angles", "action poses", "impact frames", "close-up reactions"],
+                "negative_prompt": ["realistic", "photographic", "3d render", "western", "blurry"]
+            },
+            examples=["Demon Slayer", "Attack on Titan", "My Hero Academia"]
+        )
+        
+        visual.add_concept(
+            name="ghibli",
+            description="Studio Ghibli's soft, whimsical, hand-painted aesthetic",
+            technical_specs={
+                "sd_prompt_tags": ["studio ghibli", "ghibli style", "hayao miyazaki",
+                                   "hand painted", "soft colors", "whimsical", "nature",
+                                   "watercolor", "peaceful", "magical", "totoro style",
+                                   "detailed background", "cozy"],
+                "color_palette": ["#87CEEB", "#90EE90", "#F5DEB3", "#FFB6C1", "#E6E6FA"],
+                "lighting": ["soft natural light", "golden hour", "dappled sunlight",
+                            "gentle shadows", "warm diffused light"],
+                "composition": ["wide landscape shots", "character in nature", "detailed environments",
+                               "peaceful scenes", "flying sequences"],
+                "cfg_scale": 7,
+                "negative_prompt": ["dark", "gritty", "realistic", "violent", "horror", "cyberpunk"]
+            },
+            examples=["Spirited Away", "My Neighbor Totoro", "Howl's Moving Castle", "Kiki's Delivery Service"]
+        )
+        
+        visual.add_concept(
+            name="noir",
+            description="Classic film noir with black and white, dramatic shadows",
+            technical_specs={
+                "sd_prompt_tags": ["film noir", "black and white", "monochrome",
+                                   "dramatic shadows", "venetian blind shadows", "1940s",
+                                   "detective", "femme fatale", "high contrast", "chiaroscuro",
+                                   "moody", "cigarette smoke", "fedora"],
+                "color_palette": ["#000000", "#FFFFFF", "#333333", "#666666", "#999999"],
+                "lighting": ["low-key lighting", "single source", "venetian blinds",
+                            "hard shadows", "silhouettes", "rim light"],
+                "composition": ["dutch angles", "framing through doorways", "long shadows",
+                               "reflections", "staircase shots"],
+                "negative_prompt": ["color", "colorful", "bright", "cheerful", "daytime", "sunny"]
+            },
+            examples=["Double Indemnity", "The Maltese Falcon", "The Third Man", "Sin City"]
+        )
+        
+        visual.add_concept(
+            name="horror",
+            description="Unsettling horror aesthetic with desaturation and dread",
+            technical_specs={
+                "sd_prompt_tags": ["horror", "creepy", "dark", "atmospheric horror",
+                                   "fog", "mist", "desaturated", "gloomy", "ominous",
+                                   "dread", "unsettling", "eerie", "sinister"],
+                "color_palette": ["#1a1a2e", "#2d3436", "#636e72", "#74b9ff", "#a29bfe"],
+                "lighting": ["underlit faces", "flickering light", "harsh single source",
+                            "motivated darkness", "cold blue light", "practical candles"],
+                "composition": ["dutch angles", "negative space", "obscured threats",
+                               "deep shadows", "off-center framing", "low angles"],
+                "atmosphere": ["fog", "mist", "rain", "decay", "abandoned"],
+                "negative_prompt": ["bright", "cheerful", "colorful", "sunny", "happy", "vibrant"]
+            },
+            examples=["The Shining", "Hereditary", "Silent Hill", "Resident Evil"]
+        )
+        
+        visual.add_concept(
+            name="vaporwave",
+            description="Retro 80s/90s aesthetic with pink, purple, cyan, and glitch effects",
+            technical_specs={
+                "sd_prompt_tags": ["vaporwave", "aesthetic", "retrowave", "80s aesthetic",
+                                   "neon pink", "neon purple", "cyan", "glitch art",
+                                   "geometric", "grid", "palm trees", "sunset gradient",
+                                   "greek statue", "VHS", "retro futurism", "synthwave"],
+                "color_palette": ["#FF6AD5", "#C774E8", "#AD8CFF", "#8795E8", "#94D0FF", "#00FFFF"],
+                "lighting": ["neon glow", "sunset gradient", "CRT screen glow",
+                            "chrome reflections", "rim lighting"],
+                "composition": ["geometric grids", "floating objects", "perspective grids",
+                               "tiled patterns", "chrome spheres", "sunset backgrounds"],
+                "effects": ["VHS artifacts", "scan lines", "glitch", "chromatic aberration"],
+                "negative_prompt": ["realistic", "natural", "muted colors", "organic", "modern"]
+            },
+            examples=["Hotline Miami", "Far Cry 3: Blood Dragon", "Kung Fury"]
+        )
+        
+        visual.add_concept(
+            name="impressionist",
+            description="Painterly style with visible brushstrokes and light effects",
+            technical_specs={
+                "sd_prompt_tags": ["impressionist", "impressionism", "oil painting",
+                                   "visible brushstrokes", "monet style", "renoir style",
+                                   "plein air", "soft light", "atmospheric", "painterly",
+                                   "dappled light", "broken color"],
+                "color_palette": ["#87CEEB", "#F0E68C", "#DDA0DD", "#98FB98", "#FFB6C1"],
+                "lighting": ["diffused natural light", "dappled sunlight", "golden hour",
+                            "reflected light", "color in shadows"],
+                "composition": ["en plein air framing", "everyday scenes", "landscapes",
+                               "water reflections", "garden scenes"],
+                "texture": ["thick impasto", "broken color", "soft edges", "atmospheric blur"],
+                "negative_prompt": ["sharp", "photorealistic", "digital", "clean lines", "flat color"]
+            },
+            examples=["Claude Monet", "Pierre-Auguste Renoir", "Loving Vincent"]
+        )
+        
+        visual.add_concept(
+            name="surrealist",
+            description="Dreamlike imagery with impossible geometry and Dali-esque elements",
+            technical_specs={
+                "sd_prompt_tags": ["surrealist", "surrealism", "dali style", "dreamlike",
+                                   "impossible geometry", "melting", "floating objects",
+                                   "ethereal", "magritte style", "escher style",
+                                   "recursive", "distorted reality", "symbolic"],
+                "color_palette": ["#E6D5B8", "#87CEEB", "#F4A460", "#DEB887", "#C0C0C0"],
+                "lighting": ["dramatic shadows", "impossible light sources", "theatrical",
+                            "dreamlike glow", "multiple light sources"],
+                "composition": ["impossible perspectives", "scale distortion", "juxtaposition",
+                               "floating elements", "infinite landscapes", "recursive patterns"],
+                "elements": ["melting clocks", "floating stones", "impossible architecture",
+                            "symbolic objects", "metamorphosis"],
+                "negative_prompt": ["realistic", "normal", "ordinary", "mundane", "photographic"]
+            },
+            examples=["Salvador Dali", "Rene Magritte", "M.C. Escher", "Pan's Labyrinth"]
         )
         
         visual.add_concept(
             name="photorealistic",
-            description="Realistic, photo-quality images",
+            description="Ultra-realistic photo-quality images indistinguishable from photographs",
             technical_specs={
-                "sd_prompt_tags": ["photorealistic", "hyperrealistic", "8k", "uhd",
-                                   "RAW photo", "dslr", "soft lighting", "high detail"],
-                "models": ["realistic-vision", "deliberate", "photon"],
+                "sd_prompt_tags": ["photorealistic", "hyperrealistic", "8k uhd", "RAW photo",
+                                   "dslr", "high detail", "sharp focus", "detailed skin texture",
+                                   "subsurface scattering", "ray tracing", "global illumination",
+                                   "studio lighting", "professional photography"],
+                "models": ["realistic-vision", "deliberate", "photon", "juggernaut-xl"],
                 "cfg_scale": 5,
                 "steps": 30,
+                "lighting": ["natural light", "studio lighting", "soft diffused light",
+                            "golden hour", "rim lighting", "catch lights in eyes"],
+                "composition": ["shallow depth of field", "bokeh", "eye-level perspective",
+                               "professional framing", "natural poses"],
+                "color_palette": ["natural skin tones", "accurate colors", "subtle grading"],
                 "negative_prompt": ["cartoon", "anime", "painting", "illustration", 
-                                   "drawing", "artificial", "fake"]
-            }
+                                   "drawing", "artificial", "fake", "oversaturated",
+                                   "plastic skin", "doll-like", "cgi"]
+            },
+            examples=["Stock photography", "Portrait photography", "Product photography"]
         )
         
         visual.add_concept(
@@ -532,9 +827,10 @@ class KnowledgeBase:
         self._domains["animation"] = anim
     
     def _load_audio_knowledge(self) -> None:
-        """Audio and sound design knowledge."""
+        """Audio, sound design, and film scoring knowledge."""
         audio = DomainKnowledge(domain="audio")
         
+        # === MUSICAL STYLES ===
         audio.add_concept(
             name="ambient",
             description="Background environmental soundscapes",
@@ -567,6 +863,7 @@ class KnowledgeBase:
                 "techniques": ["dissonance", "sudden silence", "infrasound", 
                               "reversed audio", "distorted voices"],
                 "elements": ["drones", "metallic scrapes", "heartbeat", "breathing"],
+                "intervals": ["minor 2nd", "tritone", "diminished chords"],
                 "music_gen_prompt": "dark ambient, horror, unsettling, dissonant, tension"
             },
             examples=["Akira Yamaoka", "Goblin", "John Carpenter"]
@@ -596,6 +893,174 @@ class KnowledgeBase:
             examples=["Kavinsky", "Carpenter Brut", "Perturbator"]
         )
         
+        # === FILM SCORING CONCEPTS ===
+        audio.add_concept(
+            name="leitmotif",
+            description="Recurring musical theme associated with a character, place, or idea",
+            technical_specs={
+                "usage": ["character introduction", "emotional callback", "thematic unity"],
+                "implementation": ["short melodic phrase", "distinctive instrumentation", 
+                                  "variations for mood changes"],
+                "variations": ["major/minor for hero/villain", "tempo for tension",
+                              "orchestration for scale"],
+                "music_gen_prompt": "memorable melody, thematic, cinematic, character theme"
+            },
+            examples=["Imperial March (Vader)", "Hedwig's Theme (Harry Potter)", 
+                     "The Shire (Lord of the Rings)", "Jaws theme"]
+        )
+        
+        audio.add_concept(
+            name="diegetic",
+            description="Sound that exists within the story world (characters can hear it)",
+            technical_specs={
+                "types": ["radio music", "live performance", "ambient sounds", "dialogue"],
+                "mixing": ["room acoustics", "distance attenuation", "occlusion"],
+                "contrast": "Can transition to non-diegetic for emotional effect",
+                "examples_in_film": ["record player scene", "band at party", "car radio"]
+            },
+            examples=["Guardians of the Galaxy Awesome Mix", "Baby Driver car scenes"]
+        )
+        
+        audio.add_concept(
+            name="non-diegetic",
+            description="Sound added for audience only (score, narration, sound effects)",
+            technical_specs={
+                "types": ["underscore", "voiceover narration", "emotional sound design"],
+                "purpose": ["guide emotion", "build tension", "signal genre"],
+                "mixing": ["full stereo/surround", "clean signal", "no room tone"],
+                "technique": "Often starts diegetic then swells to non-diegetic"
+            },
+            examples=["Film scores", "Documentary narration", "Laugh tracks"]
+        )
+        
+        audio.add_concept(
+            name="underscore",
+            description="Background music supporting scenes without being noticed",
+            technical_specs={
+                "characteristics": ["subtle", "supports dialogue", "emotionally guiding"],
+                "mixing": ["ducking under dialogue", "sparse arrangement", "low register"],
+                "music_gen_prompt": "subtle underscore, minimal, background, cinematic, gentle"
+            }
+        )
+        
+        audio.add_concept(
+            name="stinger",
+            description="Short, sharp musical accent for dramatic effect",
+            technical_specs={
+                "usage": ["jump scares", "reveals", "dramatic moments", "scene transitions"],
+                "characteristics": ["sudden", "dissonant", "brief (1-3 seconds)"],
+                "instruments": ["brass hits", "string stabs", "percussion hits", "synth blasts"],
+                "music_gen_prompt": "dramatic hit, stinger, impact, brass, sudden"
+            },
+            examples=["Horror jump scares", "Netflix 'tudum'", "Law & Order 'dun dun'"]
+        )
+        
+        # === GENRE MOODS ===
+        audio.add_concept(
+            name="action score",
+            description="High-energy music for action sequences",
+            technical_specs={
+                "tempo": "120-160 BPM",
+                "elements": ["driving percussion", "brass stabs", "string ostinatos",
+                            "synth bass", "rhythmic urgency"],
+                "dynamics": ["loud overall", "impact hits", "brief quiet for contrast"],
+                "structure": ["building intensity", "peaks at action climax"],
+                "music_gen_prompt": "action, intense, percussion, brass, driving beat, cinematic"
+            },
+            examples=["Mad Max Fury Road", "John Wick", "Mission Impossible"]
+        )
+        
+        audio.add_concept(
+            name="romantic score",
+            description="Emotional, sweeping music for love scenes",
+            technical_specs={
+                "tempo": "60-80 BPM",
+                "elements": ["strings", "piano", "woodwinds", "harp", "warm pads"],
+                "harmony": ["major keys", "suspended chords", "rising progressions"],
+                "dynamics": ["soft to swelling", "intimate to grand"],
+                "music_gen_prompt": "romantic, emotional, strings, piano, sweeping, tender"
+            },
+            examples=["Titanic", "The Notebook", "Pride and Prejudice"]
+        )
+        
+        audio.add_concept(
+            name="thriller score",
+            description="Suspenseful music building tension and unease",
+            technical_specs={
+                "tempo": "variable, often accelerating",
+                "elements": ["ostinato patterns", "rising pitch", "dissonant intervals",
+                            "sparse textures", "electronic elements"],
+                "techniques": ["silence", "sudden dynamics", "heartbeat rhythms"],
+                "music_gen_prompt": "suspense, tension, thriller, dark, building, ominous"
+            },
+            examples=["Inception", "Sicario", "Gone Girl"]
+        )
+        
+        audio.add_concept(
+            name="comedy score",
+            description="Light, playful music for comedic moments",
+            technical_specs={
+                "tempo": "100-140 BPM (often bouncy)",
+                "elements": ["pizzicato strings", "woodwinds", "xylophone", "light percussion"],
+                "characteristics": ["staccato", "major keys", "playful melodies", "cartoonish"],
+                "techniques": ["mickey-mousing (matching action)", "awkward pauses"],
+                "music_gen_prompt": "comedy, playful, light, bouncy, whimsical, quirky"
+            },
+            examples=["Home Alone", "The Grand Budapest Hotel", "Pixar films"]
+        )
+        
+        audio.add_concept(
+            name="western score",
+            description="Classic American frontier sound",
+            technical_specs={
+                "elements": ["solo trumpet", "harmonica", "acoustic guitar", "whistling",
+                            "twangy electric guitar", "orchestral swells"],
+                "characteristics": ["wide open spaces", "heroic themes", "lonely melodies"],
+                "music_gen_prompt": "western, frontier, harmonica, acoustic guitar, cinematic"
+            },
+            examples=["Ennio Morricone", "Django Unchained", "No Country for Old Men"]
+        )
+        
+        # === PACING CONCEPTS ===
+        audio.add_concept(
+            name="musical pacing",
+            description="Using tempo and rhythm to control scene energy",
+            technical_specs={
+                "slow_scene": {"tempo": "40-70 BPM", "usage": "emotional, reflective, intimate"},
+                "medium_scene": {"tempo": "80-110 BPM", "usage": "dialogue, exploration, transition"},
+                "fast_scene": {"tempo": "120-180 BPM", "usage": "action, chase, climax"},
+                "techniques": ["tempo acceleration for building tension",
+                              "tempo deceleration for resolution",
+                              "rubato for emotional emphasis"]
+            }
+        )
+        
+        audio.add_concept(
+            name="dynamic arc",
+            description="Volume and intensity shaping over time",
+            technical_specs={
+                "shapes": {
+                    "crescendo": "quiet to loud, building anticipation",
+                    "decrescendo": "loud to quiet, resolution or dread",
+                    "swell": "quiet-loud-quiet, emotional peaks",
+                    "plateau": "sustained intensity for action"
+                },
+                "mixing": ["automate volume", "add/remove layers", "EQ brightness"]
+            }
+        )
+        
+        audio.add_concept(
+            name="silence",
+            description="Strategic use of no music for dramatic effect",
+            technical_specs={
+                "usage": ["before jump scare", "after revelation", "intimate dialogue",
+                         "documentary realism", "uncomfortable tension"],
+                "duration": {"brief": "1-3 sec impact", "extended": "10+ sec dread/realism"},
+                "techniques": ["cut music abruptly for shock", "fade out for resolution"]
+            },
+            examples=["No Country for Old Men (mostly no score)", "A Quiet Place"]
+        )
+        
         # Techniques
         audio.add_technique("sound layering", [
             "Start with base/fundamental sound",
@@ -611,6 +1076,29 @@ class KnowledgeBase:
             "Increase tempo or rhythm density",
             "Rise in pitch/frequency",
             "Cut to silence before climax"
+        ])
+        
+        audio.add_technique("spotting", [
+            "Watch scene without music to understand natural rhythm",
+            "Identify key emotional beats and hit points",
+            "Decide diegetic vs non-diegetic needs",
+            "Note dialogue that needs music ducking",
+            "Plan music entry/exit points at natural scene breaks"
+        ])
+        
+        audio.add_technique("mickey-mousing", [
+            "Match music directly to on-screen action",
+            "Accent movements with stings or motifs",
+            "Use for comedy or heightened stylization",
+            "Avoid for realistic drama (too cartoonish)"
+        ])
+        
+        # Constraints
+        audio.add_constraint("dialogue scenes", [
+            "Keep underscore minimal and low-register",
+            "Avoid melodic content that competes with speech",
+            "Duck music volume during dialogue",
+            "Enter/exit music during pauses when possible"
         ])
         
         self._domains["audio"] = audio

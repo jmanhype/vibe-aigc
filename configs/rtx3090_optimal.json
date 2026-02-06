@@ -1,0 +1,140 @@
+{
+  "hardware": {
+    "gpu": "RTX 3090",
+    "vram": "24GB",
+    "host": "192.168.1.143",
+    "comfyui_url": "http://192.168.1.143:8188",
+    "frame_server_url": "http://192.168.1.143:8189",
+    "notes": "Remote AI Factory. Full VRAM for LTX-2, SDXL, high-res video."
+  },
+  
+  "comfyui_launch_args": [
+    "--highvram",
+    "--preview-method auto"
+  ],
+  
+  "sd15_optimal": {
+    "resolution": {"width": 768, "height": 768},
+    "max_resolution": {"width": 1024, "height": 1024},
+    "batch_size": 4,
+    "steps": 25,
+    "cfg": 7.0,
+    "sampler": "euler_ancestral",
+    "scheduler": "normal",
+    "notes": "Can batch 4 at 768x768 easily."
+  },
+  
+  "sdxl_optimal": {
+    "resolution": {"width": 1024, "height": 1024},
+    "max_resolution": {"width": 1536, "height": 1536},
+    "batch_size": 2,
+    "steps": 30,
+    "cfg": 5.5,
+    "sampler": "dpmpp_2m",
+    "scheduler": "karras",
+    "vae_tiling": false,
+    "fp8_model": false,
+    "notes": "Full precision SDXL, no tiling needed. Batch 2 at 1024."
+  },
+  
+  "ltx2_optimal": {
+    "resolution": {"width": 1920, "height": 1088},
+    "model": "ltx-2-19b-distilled-fp8.safetensors",
+    "upscaler": "ltx-2-spatial-upscaler-x2-1.0.safetensors",
+    "fps": 24,
+    "frames": {
+      "fast": 121,
+      "balanced": 180,
+      "quality": 210
+    },
+    "max_frames": 210,
+    "notes": "210 frames = 8.7 sec max. Beyond that hits VRAM limit."
+  },
+  
+  "animatediff_optimal": {
+    "motion_model": "v3_sd15_mm.ckpt",
+    "frames": {
+      "fast": 24,
+      "balanced": 32,
+      "quality": 48
+    },
+    "resolution": {"width": 768, "height": 768},
+    "steps": 20,
+    "cfg": 7.0,
+    "fps": 12,
+    "context_length": 24,
+    "notes": "32 frames @ 768x768 easily. Can push to 48 frames."
+  },
+  
+  "upscaling": {
+    "method": "RealESRGAN_x4plus",
+    "scale": 4,
+    "alternative": "ltx-2-spatial-upscaler-x2 for video",
+    "notes": "24GB allows full 4x upscaling in one pass."
+  },
+  
+  "img2img": {
+    "denoise": {
+      "subtle": 0.4,
+      "moderate": 0.6,
+      "heavy": 0.8
+    },
+    "steps": 25,
+    "cfg": 7.0
+  },
+  
+  "memory_tips": [
+    "No need for fp8 on most models",
+    "Can run multiple workflows in queue",
+    "24GB handles SDXL + ControlNet + LoRA simultaneously",
+    "LTX-2 at 210 frames is the tested max"
+  ],
+  
+  "recommended_models": {
+    "sd15": [
+      "dreamshaper_8.safetensors",
+      "realistic_vision_5.1.safetensors"
+    ],
+    "sdxl": [
+      "sd_xl_base_1.0.safetensors",
+      "juggernautXL_v9.safetensors"
+    ],
+    "video": [
+      "ltx-2-19b-distilled-fp8.safetensors (primary)",
+      "v3_sd15_mm.ckpt (AnimateDiff)"
+    ],
+    "upscale": [
+      "RealESRGAN_x4plus.pth",
+      "ltx-2-spatial-upscaler-x2-1.0.safetensors"
+    ]
+  },
+  
+  "workflows": {
+    "quick_image": {
+      "model": "SDXL",
+      "resolution": "1024x1024",
+      "steps": 20,
+      "time": "~5 seconds"
+    },
+    "quality_image": {
+      "model": "SDXL",
+      "resolution": "1536x1536",
+      "steps": 35,
+      "time": "~15 seconds"
+    },
+    "quick_video": {
+      "model": "LTX-2",
+      "resolution": "1920x1088",
+      "frames": 121,
+      "duration": "5 sec",
+      "time": "~30 seconds"
+    },
+    "quality_video": {
+      "model": "LTX-2",
+      "resolution": "1920x1088",
+      "frames": 210,
+      "duration": "8.7 sec",
+      "time": "~60 seconds"
+    }
+  }
+}

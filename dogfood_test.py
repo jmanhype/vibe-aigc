@@ -1,122 +1,103 @@
-"""
-Dogfood Test: Use vibe-aigc to generate content about vibe-aigc.
-This tests the full architecture end-to-end.
-"""
+"""Dogfood test - prove the full architecture works."""
 import asyncio
-import os
-from vibe_aigc import (
-    Vibe, MetaPlanner,
-    create_knowledge_base, create_default_registry
-)
 
-async def main():
-    print("=" * 60)
-    print("VIBE AIGC DOGFOOD TEST")
-    print("=" * 60)
+async def dogfood():
+    print('='*60)
+    print('DOGFOOD TEST - Full Paper Architecture')
+    print('='*60)
+    print()
     
-    # 1. Test Knowledge Base
-    print("\n[1] KNOWLEDGE BASE TEST")
-    print("-" * 40)
+    # 1. Test KnowledgeBase with new aesthetics
+    from vibe_aigc.knowledge import create_knowledge_base
     kb = create_knowledge_base()
     
-    print(f"Domains: {kb.list_domains()}")
+    print('[1] KnowledgeBase - New Aesthetics')
+    for style in ['blade runner', 'cyberpunk', 'ghibli', 'noir']:
+        result = kb.query(style)
+        if result:
+            tags = result.get('technical_specs', {}).get('sd_prompt_tags', [])[:3]
+            print(f'    {style}: {tags}')
+        else:
+            print(f'    {style}: NOT FOUND')
+    print()
     
-    # Test the Hitchcock example from the paper
-    result = kb.query("Hitchcockian suspense thriller")
-    print(f"\nQuery: 'Hitchcockian suspense thriller'")
-    print(f"Matched concepts: {[c['concept'] for c in result['matched_concepts']]}")
-    print(f"Technical specs: {list(result['technical_specs'].keys())}")
+    # 2. Test ToolRegistry with all tools
+    from vibe_aigc.tools import create_default_registry
+    registry = create_default_registry('http://192.168.1.143:8188')
+    tools = [t.name for t in registry.list_tools()]
+    print(f'[2] ToolRegistry - {len(tools)} tools')
+    print(f'    {tools}')
+    print()
     
-    # Show some specs
-    if 'camera' in result['technical_specs']:
-        print(f"  Camera: {result['technical_specs']['camera']}")
-    if 'lighting' in result['technical_specs']:
-        print(f"  Lighting: {result['technical_specs']['lighting']}")
+    # 3. Test Pipeline chaining
+    from vibe_aigc.pipeline import Pipeline, PipelineStep, PipelineBuilder
+    print('[3] Pipeline - Building image->video chain')
+    builder = PipelineBuilder('dogfood_test', registry)
+    print(f'    Builder created: {builder.name}')
+    print()
     
-    # 2. Test Tool Registry
-    print("\n[2] TOOL REGISTRY TEST")
-    print("-" * 40)
-    registry = create_default_registry()
+    # 4. Test Ollama connection
+    print('[4] Ollama - Checking 3090')
+    from vibe_aigc.llm import check_ollama_available, list_ollama_models
+    available = await check_ollama_available('http://192.168.1.143:11434')
+    print(f'    Available: {available}')
+    if available:
+        models = await list_ollama_models('http://192.168.1.143:11434')
+        print(f'    Models: {len(models)} found')
+    print()
     
-    tools = registry.list_tools()
-    print(f"Available tools: {[t.name for t in tools]}")
-    
-    # Test template tool
-    template_tool = registry.get("template_fill")
-    result = await template_tool.execute({
-        "template_name": "social_post",
-        "values": {
-            "hook": "[rocket] Just shipped vibe-aigc!",
-            "body": "A new paradigm for AI content generation.",
-            "call_to_action": "Try it: pip install vibe-aigc",
-            "hashtags": "#AI #AIGC #Python"
-        }
-    })
-    print(f"\nTemplate tool test:")
-    print(result.output["text"].encode('ascii', 'replace').decode())
-    
-    # 3. Test Combine Tool
-    print("\n[3] COMBINE TOOL TEST")
-    print("-" * 40)
-    combine_tool = registry.get("combine")
-    result = await combine_tool.execute({
-        "pieces": ["Part 1: Introduction", "Part 2: Features", "Part 3: Conclusion"],
-        "separator": "\n\n---\n\n"
-    })
-    print(f"Combined {result.metadata['piece_count']} pieces")
-    print(result.output["text"][:100] + "...")
-    
-    # 4. Test MetaPlanner with Knowledge + Tools
-    print("\n[4] METAPLANNER INTEGRATION TEST")
-    print("-" * 40)
-    
-    # Check if we have an API key for real execution
-    has_api_key = bool(os.getenv("OPENAI_API_KEY"))
-    
-    # Create a vibe
-    vibe = Vibe(
-        description="Write a short promotional tweet about an AI content generation tool",
-        style="engaging, technical but accessible",
-        constraints=["under 280 characters", "include emoji"],
-        domain="writing"
+    # 5. Test VLM refinement
+    print('[5] VLM Refinement - Testing prompt fix')
+    from vibe_aigc.vlm_feedback import VLMFeedback, FeedbackResult, MediaType
+    vlm = VLMFeedback()
+    mock_feedback = FeedbackResult(
+        quality_score=5.0,
+        media_type=MediaType.IMAGE,
+        description='Lighting is flat, hands look wrong',
+        strengths=['good composition'],
+        weaknesses=['lighting is flat', 'hands are distorted']
     )
+    refined = vlm.refine_prompt('a warrior standing', mock_feedback)
+    print(f'    Original: a warrior standing')
+    print(f'    Refined:  {refined}')
+    print()
     
-    print(f"Vibe: {vibe.description}")
-    print(f"Style: {vibe.style}")
+    # 6. ACTUAL GENERATION with blade runner style
+    print('[6] GENERATION - Blade Runner style image')
+    print('    Querying knowledge...')
+    br_knowledge = kb.query('blade runner')
+    specs = br_knowledge.get('technical_specs', {}) if br_knowledge else {}
     
-    if has_api_key:
-        # Create planner with full architecture
-        planner = MetaPlanner(
-            knowledge_base=kb,
-            tool_registry=registry
-        )
-        
-        print("\n[Running with real LLM...]")
-        try:
-            result = await planner.execute(vibe)
-            print(f"Status: {result['status']}")
-            print(f"Nodes executed: {result['execution_summary']['total_nodes']}")
-            for node_id, node_result in result['node_results'].items():
-                print(f"  - {node_id}: {node_result['status']}")
-                if node_result.get('result'):
-                    output = node_result['result']
-                    if isinstance(output, dict) and 'text' in output.get('result', {}):
-                        print(f"    Output: {output['result']['text'][:100]}...")
-        except Exception as e:
-            print(f"Execution error: {e}")
-    else:
-        print("\n[No API key - skipping MetaPlanner test]")
-        print("Set OPENAI_API_KEY to test full execution")
+    base_prompt = 'a detective in a dark alley'
+    enhanced = base_prompt
+    if specs.get('sd_prompt_tags'):
+        enhanced += ', ' + ', '.join(specs['sd_prompt_tags'][:5])
+    if specs.get('lighting'):
+        enhanced += ', ' + ', '.join(specs['lighting'][:2])
     
-    # 5. Knowledge Context Generation
-    print("\n[5] KNOWLEDGE CONTEXT FOR LLM")
-    print("-" * 40)
-    context = kb.to_prompt_context("Create a noir cinematic video with minimalist design")
-    print(context[:600])
+    print(f'    Enhanced prompt: {enhanced[:80]}...')
     
-    print("\n" + "=" * 60)
-    print("DOGFOOD TEST COMPLETE")
-    print("=" * 60)
+    image_tool = registry.get('image_generation')
+    if image_tool:
+        print('    Generating...')
+        result = await image_tool.execute({
+            'prompt': enhanced,
+            'negative_prompt': 'blurry, distorted',
+            'width': 768,
+            'height': 512,
+            'steps': 20
+        })
+        print(f'    Success: {result.success}')
+        if result.success:
+            print(f'    URL: {result.output.get("image_url")}')
+            print(f'    Quality: {result.output.get("quality_score")}/10')
+        else:
+            print(f'    Error: {result.error}')
+    print()
+    
+    print('='*60)
+    print('DOGFOOD COMPLETE')
+    print('='*60)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(dogfood())

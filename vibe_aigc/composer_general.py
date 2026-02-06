@@ -10,9 +10,10 @@ This composer:
 NO HARDCODED NODE TYPES. Everything is discovered.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from .discovery import SystemCapabilities, Capability, AvailableNode, AvailableModel
+from .models import GenerationRequest, CharacterProfile
 
 
 @dataclass
@@ -45,6 +46,40 @@ STANDARD_REQUIREMENTS = {
         purpose="load_clip",
         output_types=["CLIP"],
         preferred_patterns=["cliploader"]
+    ),
+    # IP-Adapter / Character consistency
+    "load_ipadapter": NodeRequirement(
+        purpose="load_ipadapter",
+        output_types=["IPADAPTER"],
+        preferred_patterns=["ipadaptermodelloader", "ipadapterloader", "ipadapter"]
+    ),
+    "load_clip_vision": NodeRequirement(
+        purpose="load_clip_vision",
+        output_types=["CLIP_VISION"],
+        preferred_patterns=["clipvisionloader", "clip_vision"]
+    ),
+    "encode_clip_vision": NodeRequirement(
+        purpose="encode_clip_vision",
+        input_types=["CLIP_VISION", "IMAGE"],
+        output_types=["CLIP_VISION_OUTPUT"],
+        preferred_patterns=["clipvisionencode"]
+    ),
+    "apply_ipadapter": NodeRequirement(
+        purpose="apply_ipadapter",
+        input_types=["MODEL", "IPADAPTER", "IMAGE"],
+        output_types=["MODEL"],
+        preferred_patterns=["ipadapterapply", "ipadapter"]
+    ),
+    "load_image": NodeRequirement(
+        purpose="load_image",
+        output_types=["IMAGE"],
+        preferred_patterns=["loadimage", "load_image"]
+    ),
+    "load_lora": NodeRequirement(
+        purpose="load_lora",
+        input_types=["MODEL", "CLIP"],
+        output_types=["MODEL", "CLIP"],
+        preferred_patterns=["loraloader", "lora"]
     ),
     "encode_text": NodeRequirement(
         purpose="encode_text",
@@ -425,6 +460,264 @@ class GeneralComposer:
             base["4"]["inputs"]["batch_size"] = frames
         return base
     
+    # =========================================================================
+    # CHARACTER CONSISTENCY / IP-ADAPTER SUPPORT
+    # =========================================================================
+    
+    def inject_ipadapter(
+        self,
+        workflow: Dict[str, Any],
+        reference_image: str,
+        strength: float = 0.8,
+        model_node_id: str = "1",
+        start_node_id: int = 100
+    ) -> Tuple[Dict[str, Any], str]:
+        """Inject IP-Adapter nodes into an existing workflow.
+        
+        Returns updated workflow and the new model node ID to use downstream.
+        """
+        node_id = start_node_id
+        
+        # Find IP-Adapter loader
+        ipadapter_loader = self.find_node_for(STANDARD_REQUIREMENTS["load_ipadapter"])
+        clip_vision_loader = self.find_node_for(STANDARD_REQUIREMENTS["load_clip_vision"])
+        ipadapter_apply = self.find_node_for(STANDARD_REQUIREMENTS["apply_ipadapter"])
+        load_image = self.find_node_for(STANDARD_REQUIREMENTS["load_image"])
+        
+        if not ipadapter_apply:
+            print("No IP-Adapter apply node found - skipping character reference")
+            return workflow, model_node_id
+        
+        if not load_image:
+            print("No image loader found - skipping character reference")
+            return workflow, model_node_id
+        
+        # Load reference image
+        workflow[str(node_id)] = {
+            "class_type": load_image,
+            "inputs": {"image": reference_image}
+        }
+        ref_image_node = str(node_id)
+        node_id += 1
+        
+        # Load CLIP Vision (if available and needed)
+        clip_vision_node = None
+        if clip_vision_loader:
+            clip_vision_models = self.caps.get_clip_vision_models()
+            if clip_vision_models:
+                workflow[str(node_id)] = {
+                    "class_type": clip_vision_loader,
+                    "inputs": {"clip_name": clip_vision_models[0].filename}
+                }
+                clip_vision_node = str(node_id)
+                node_id += 1
+        
+        # Load IP-Adapter model (if loader exists)
+        ipadapter_model_node = None
+        if ipadapter_loader:
+            ipadapter_models = self.caps.get_ipadapter_models()
+            if ipadapter_models:
+                workflow[str(node_id)] = {
+                    "class_type": ipadapter_loader,
+                    "inputs": {"ipadapter_file": ipadapter_models[0].filename}
+                }
+                ipadapter_model_node = str(node_id)
+                node_id += 1
+        
+        # Apply IP-Adapter
+        apply_inputs = {
+            "model": [model_node_id, 0],
+            "image": [ref_image_node, 0],
+            "weight": strength,
+        }
+        
+        # Add optional inputs if available
+        if ipadapter_model_node:
+            apply_inputs["ipadapter"] = [ipadapter_model_node, 0]
+        if clip_vision_node:
+            apply_inputs["clip_vision"] = [clip_vision_node, 0]
+        
+        workflow[str(node_id)] = {
+            "class_type": ipadapter_apply,
+            "inputs": apply_inputs
+        }
+        new_model_node = str(node_id)
+        node_id += 1
+        
+        return workflow, new_model_node
+    
+    def inject_lora(
+        self,
+        workflow: Dict[str, Any],
+        lora_path: str,
+        strength: float = 0.8,
+        model_node_id: str = "1",
+        clip_node_id: Optional[str] = None,
+        start_node_id: int = 100
+    ) -> Tuple[Dict[str, Any], str, Optional[str]]:
+        """Inject LoRA into an existing workflow.
+        
+        Returns updated workflow, new model node ID, and new clip node ID.
+        """
+        lora_loader = self.find_node_for(STANDARD_REQUIREMENTS["load_lora"])
+        if not lora_loader:
+            print("No LoRA loader found - skipping LoRA injection")
+            return workflow, model_node_id, clip_node_id
+        
+        node_id = start_node_id
+        
+        lora_inputs = {
+            "lora_name": lora_path,
+            "strength_model": strength,
+            "strength_clip": strength,
+            "model": [model_node_id, 0],
+        }
+        
+        if clip_node_id:
+            lora_inputs["clip"] = [clip_node_id, 0]
+        
+        workflow[str(node_id)] = {
+            "class_type": lora_loader,
+            "inputs": lora_inputs
+        }
+        new_model_node = str(node_id)
+        new_clip_node = str(node_id) if clip_node_id else None
+        
+        return workflow, new_model_node, new_clip_node
+    
+    def inject_clip_vision_reference(
+        self,
+        workflow: Dict[str, Any],
+        reference_image: str,
+        start_node_id: int = 100
+    ) -> Tuple[Dict[str, Any], Optional[str]]:
+        """Inject CLIP Vision encoding for reference image (lighter alternative to IP-Adapter).
+        
+        This works even without full IP-Adapter by encoding the reference image
+        via CLIP Vision, which can be used for style guidance.
+        
+        Returns updated workflow and the clip vision output node ID.
+        """
+        clip_vision_loader = self.find_node_for(STANDARD_REQUIREMENTS["load_clip_vision"])
+        clip_vision_encode = self.find_node_for(STANDARD_REQUIREMENTS["encode_clip_vision"])
+        load_image = self.find_node_for(STANDARD_REQUIREMENTS["load_image"])
+        
+        if not (clip_vision_encode and load_image):
+            print("CLIP Vision encode or image loader not available")
+            return workflow, None
+        
+        node_id = start_node_id
+        
+        # Load reference image
+        workflow[str(node_id)] = {
+            "class_type": load_image,
+            "inputs": {"image": reference_image}
+        }
+        ref_image_node = str(node_id)
+        node_id += 1
+        
+        # Load CLIP Vision model (if needed)
+        clip_vision_node = None
+        if clip_vision_loader:
+            clip_vision_models = self.caps.get_clip_vision_models()
+            if clip_vision_models:
+                workflow[str(node_id)] = {
+                    "class_type": clip_vision_loader,
+                    "inputs": {"clip_name": clip_vision_models[0].filename}
+                }
+                clip_vision_node = str(node_id)
+                node_id += 1
+        
+        # Encode with CLIP Vision
+        encode_inputs = {"image": [ref_image_node, 0]}
+        if clip_vision_node:
+            encode_inputs["clip_vision"] = [clip_vision_node, 0]
+        
+        workflow[str(node_id)] = {
+            "class_type": clip_vision_encode,
+            "inputs": encode_inputs
+        }
+        clip_vision_output = str(node_id)
+        
+        return workflow, clip_vision_output
+    
+    def compose_with_character_reference(
+        self,
+        model: AvailableModel,
+        prompt: str,
+        reference_image: str,
+        character_strength: float = 0.8,
+        negative_prompt: str = "",
+        width: int = 512,
+        height: int = 512,
+        steps: int = 20,
+        cfg: float = 7.0,
+        seed: int = 0,
+        character_lora: Optional[str] = None,
+        character_lora_strength: float = 0.8
+    ) -> Optional[Dict[str, Any]]:
+        """Compose a text-to-image workflow with character reference.
+        
+        Uses IP-Adapter if available, falls back to CLIP Vision encoding.
+        """
+        # Start with base text-to-image workflow
+        workflow = self.compose_text_to_image(
+            model, prompt, negative_prompt, width, height, steps, cfg, seed
+        )
+        
+        if not workflow:
+            return None
+        
+        # Find the model node (typically node 1 from checkpoint loader)
+        model_node_id = "1"
+        clip_node_id = "1"  # CLIP is output 1 from checkpoint loader
+        
+        current_start_id = 100
+        
+        # Inject character LoRA if provided
+        if character_lora:
+            workflow, model_node_id, clip_node_id = self.inject_lora(
+                workflow,
+                character_lora,
+                character_lora_strength,
+                model_node_id,
+                clip_node_id,
+                current_start_id
+            )
+            current_start_id += 10
+        
+        # Try IP-Adapter first
+        if self.caps.has_ipadapter_support():
+            workflow, new_model_node = self.inject_ipadapter(
+                workflow,
+                reference_image,
+                character_strength,
+                model_node_id,
+                current_start_id
+            )
+            
+            # Update sampler to use new model node
+            for node_id, node in workflow.items():
+                if node.get("class_type", "").lower() in ["ksampler", "sampler"]:
+                    if "model" in node.get("inputs", {}):
+                        node["inputs"]["model"] = [new_model_node, 0]
+        
+        elif self.caps.has_reference_image_support():
+            # Fall back to CLIP Vision encoding
+            workflow, clip_vision_output = self.inject_clip_vision_reference(
+                workflow,
+                reference_image,
+                current_start_id
+            )
+            # Note: CLIP Vision output would need to be wired to compatible nodes
+            # This is a placeholder for systems without full IP-Adapter
+            print("Using CLIP Vision encoding (limited character consistency)")
+        
+        else:
+            print("No character reference support available on this system")
+        
+        return workflow
+    
     def compose_for_capability(
         self,
         capability: Capability,
@@ -446,6 +739,120 @@ class GeneralComposer:
         else:
             print(f"Composition not yet implemented for {capability.value}")
             return None
+
+
+    def compose_from_request(
+        self,
+        request: GenerationRequest,
+        capability: Capability = Capability.TEXT_TO_IMAGE
+    ) -> Optional[Dict[str, Any]]:
+        """Compose a workflow from a GenerationRequest.
+        
+        Automatically handles character consistency if reference_image is provided.
+        """
+        # Find appropriate model
+        model = None
+        if request.model:
+            # Use specified model
+            for category_models in self.caps.models.values():
+                for m in category_models:
+                    if m.filename == request.model:
+                        model = m
+                        break
+                if model:
+                    break
+        
+        if not model:
+            model = self.find_model_for(capability)
+        
+        if not model:
+            print(f"No model found for {capability.value}")
+            return None
+        
+        # Compose based on whether we have character reference
+        if request.reference_image:
+            workflow = self.compose_with_character_reference(
+                model=model,
+                prompt=request.prompt,
+                reference_image=request.reference_image,
+                character_strength=request.character_strength,
+                negative_prompt=request.negative_prompt,
+                width=request.width,
+                height=request.height,
+                steps=request.steps,
+                cfg=request.cfg,
+                seed=request.seed,
+                character_lora=request.character_lora,
+                character_lora_strength=request.character_lora_strength
+            )
+        else:
+            # Standard composition
+            if capability == Capability.TEXT_TO_IMAGE:
+                workflow = self.compose_text_to_image(
+                    model, request.prompt, request.negative_prompt,
+                    request.width, request.height, request.steps,
+                    request.cfg, request.seed
+                )
+            elif capability in [Capability.TEXT_TO_VIDEO, Capability.IMAGE_TO_VIDEO]:
+                workflow = self.compose_text_to_video(
+                    model, request.prompt, request.negative_prompt,
+                    request.width, request.height, request.frames,
+                    request.steps, request.cfg, request.seed
+                )
+            else:
+                workflow = self.compose_for_capability(capability, request.prompt)
+        
+        # Inject additional LoRAs if specified
+        if workflow and request.loras:
+            model_node = "1"
+            clip_node = "1"
+            start_id = 200
+            
+            for lora_config in request.loras:
+                lora_path = lora_config.get("path", lora_config.get("name", ""))
+                lora_strength = lora_config.get("strength", 0.8)
+                
+                if lora_path:
+                    workflow, model_node, clip_node = self.inject_lora(
+                        workflow, lora_path, lora_strength,
+                        model_node, clip_node, start_id
+                    )
+                    start_id += 10
+        
+        return workflow
+    
+    def compose_for_character(
+        self,
+        profile: CharacterProfile,
+        prompt: str,
+        capability: Capability = Capability.TEXT_TO_IMAGE,
+        **kwargs
+    ) -> Optional[Dict[str, Any]]:
+        """Compose a workflow using a CharacterProfile for consistency.
+        
+        Convenience method that extracts reference settings from profile.
+        """
+        # Merge profile settings with any overrides
+        gen_params = profile.to_generation_params()
+        gen_params.update(kwargs)
+        
+        # Inject trigger words into prompt if available
+        full_prompt = prompt
+        if profile.trigger_words:
+            trigger_str = " ".join(profile.trigger_words)
+            full_prompt = f"{trigger_str}, {prompt}"
+        
+        # Add character description to prompt
+        if profile.description:
+            full_prompt = f"{profile.description}, {full_prompt}"
+        
+        # Create request
+        request = GenerationRequest(
+            prompt=full_prompt,
+            **gen_params
+        )
+        
+        return self.compose_from_request(request, capability)
 
 
 def create_composer(capabilities: SystemCapabilities) -> GeneralComposer:

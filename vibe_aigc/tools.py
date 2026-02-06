@@ -517,4 +517,36 @@ def create_default_registry(comfyui_url: str = "http://127.0.0.1:8188") -> ToolR
     except ImportError:
         pass  # ComfyUI tools optional
     
+    # Register audio generation tools (music, TTS, SFX)
+    try:
+        from .tools_audio import create_audio_tools
+        for tool in create_audio_tools():
+            registry.register(tool)
+    except ImportError:
+        pass  # Audio tools optional
+    
+    # Register video manipulation tools (interpolate, loop, reverse, speed, gif)
+    try:
+        from .tools_video import create_video_tools
+        for tool in create_video_tools():
+            registry.register(tool)
+    except ImportError:
+        pass  # Video tools optional
+    
+    # Register utility tools (web search, file ops, code exec)
+    try:
+        from .tools_utility import create_utility_tools
+        for tool in create_utility_tools():
+            registry.register(tool)
+    except ImportError:
+        pass  # Utility tools optional
+    
+    # Register vision/analysis tools (captioning, depth, segmentation, detection, OCR)
+    try:
+        from .tools_vision import create_vision_tools
+        for tool in create_vision_tools(comfyui_url):
+            registry.register(tool)
+    except ImportError:
+        pass  # Vision tools optional
+    
     return registry

@@ -11,9 +11,9 @@ Architecture (Paper Section 5):
 - AssetBank: Character and style consistency management
 """
 
-from .models import Vibe, WorkflowPlan, WorkflowNode, WorkflowNodeType
+from .models import Vibe, WorkflowPlan, WorkflowNode, WorkflowNodeType, GenerationRequest, CharacterProfile
 from .planner import MetaPlanner
-from .llm import LLMClient, LLMConfig
+from .llm import LLMClient, LLMConfig, LLMProvider, list_ollama_models, check_ollama_available
 from .executor import WorkflowExecutor, ExecutionStatus, ExecutionResult
 
 # Paper Section 5.3: Domain-Specific Expert Knowledge Base
@@ -78,8 +78,15 @@ __version__ = "0.2.0"
 __all__ = [
     # Core models
     "Vibe", "WorkflowPlan", "WorkflowNode", "WorkflowNodeType",
+    "GenerationRequest", "CharacterProfile",
+    # System Discovery
+    "SystemDiscovery", "SystemCapabilities", "Capability", "HardwareConstraints",
+    "AvailableNode", "AvailableModel", "discover_system",
+    # General Composer
+    "GeneralComposer", "NodeRequirement", "STANDARD_REQUIREMENTS", "create_composer",
     # MetaPlanner (Section 5.2)
-    "MetaPlanner", "LLMClient", "LLMConfig",
+    "MetaPlanner", "LLMClient", "LLMConfig", "LLMProvider",
+    "list_ollama_models", "check_ollama_available",
     # Executor
     "WorkflowExecutor", "ExecutionStatus", "ExecutionResult",
     # Knowledge Base (Section 5.3)
@@ -97,8 +104,31 @@ __all__ = [
     "DesignerAgent", "ScreenwriterAgent", "ComposerAgent",
     "create_default_agents",
     # Asset Bank
-    "AssetBank", "Character", "StyleGuide", "Artifact", "create_asset_bank"
+    "AssetBank", "Character", "StyleGuide", "Artifact", "create_asset_bank",
+    # Pipeline chaining
+    "Pipeline", "PipelineStep", "PipelineResult", "PipelineStatus",
+    "PipelineBuilder", "StepResult",
+    "create_image_pipeline", "create_video_pipeline"
 ]
+# System Discovery - Constraint-aware system discovery
+from .discovery import (
+    SystemDiscovery,
+    SystemCapabilities,
+    Capability,
+    HardwareConstraints,
+    AvailableNode,
+    AvailableModel,
+    discover_system,
+)
+
+# General Workflow Composer - Builds workflows from discovered nodes
+from .composer_general import (
+    GeneralComposer,
+    NodeRequirement,
+    STANDARD_REQUIREMENTS,
+    create_composer,
+)
+
 # Model Registry - Auto-detect available models
 from .model_registry import ModelRegistry, ModelCapability, ModelFamily, ModelSpec
 
@@ -116,3 +146,15 @@ from .audio import MusicGenBackend, RiffusionBackend, ElevenLabsBackend, MusicGe
 
 # MV Pipeline
 from .mv_pipeline import MVPipeline, Shot, Storyboard, create_mv
+
+# Pipeline chaining for workflow orchestration
+from .pipeline import (
+    Pipeline,
+    PipelineStep,
+    PipelineResult,
+    PipelineStatus,
+    PipelineBuilder,
+    StepResult,
+    create_image_pipeline,
+    create_video_pipeline
+)

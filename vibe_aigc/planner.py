@@ -13,6 +13,7 @@ from .knowledge import KnowledgeBase, create_knowledge_base
 from .tools import ToolRegistry, create_default_registry
 from .model_registry import ModelRegistry, ModelCapability
 from .vlm_feedback import VLMFeedback, FeedbackResult, create_vlm_feedback
+from .pipeline import Pipeline, PipelineStep, PipelineResult, PipelineBuilder
 
 
 class MetaPlanner:
@@ -793,3 +794,147 @@ class MetaPlanner:
                 self.progress_callback(event)
             except Exception:
                 pass  # Don't let callback errors interrupt execution
+
+    # ================== Pipeline Integration ==================
+
+    def vibe_to_pipeline(self, vibe: Vibe) -> Pipeline:
+        """
+        Convert a Vibe to a Pipeline for direct tool chain execution.
+        
+        This is an alternative to the LLM-based plan() method. Instead of
+        using an LLM to decompose the vibe, it uses heuristics based on
+        domain and constraints to build a deterministic pipeline.
+        
+        Good for:
+        - Known workflows (image->upscale->video)
+        - Performance-critical paths
+        - When you want deterministic execution
+        
+        Args:
+            vibe: The creative intent to convert
+        
+        Returns:
+            Pipeline ready for execution
+        """
+        steps = []
+        domain = vibe.domain or "general"
+        description = vibe.description.lower()
+        metadata = vibe.metadata or {}
+        
+        # Detect content type from description and domain
+        wants_video = any(kw in description for kw in ["video", "animate", "motion", "clip"])
+        wants_image = any(kw in description for kw in ["image", "picture", "photo", "illustration"])
+        wants_audio = any(kw in description for kw in ["music", "sound", "audio", "song"])
+        wants_upscale = any(kw in description for kw in ["upscale", "high-res", "4k", "hd"])
+        
+        # Build pipeline based on detected intent
+        if wants_video:
+            # Video pipeline: generate first frame -> video
+            if not metadata.get("has_source_image"):
+                steps.append(PipelineStep(
+                    tool="image_generate",
+                    config={
+                        "prompt": vibe.description,
+                        "size": metadata.get("image_size", "768x768")
+                    },
+                    name="generate_first_frame"
+                ))
+            
+            if wants_upscale:
+                steps.append(PipelineStep(
+                    tool="image_upscale",
+                    config={"scale": metadata.get("upscale_factor", 2)},
+                    name="upscale_frame",
+                    on_error="skip"
+                ))
+            
+            steps.append(PipelineStep(
+                tool="video_generate",
+                config={
+                    "prompt": vibe.description,
+                    "frames": metadata.get("frames", 33)
+                },
+                name="generate_video"
+            ))
+            
+        elif wants_audio:
+            # Audio pipeline
+            steps.append(PipelineStep(
+                tool="audio_generate",
+                config={
+                    "prompt": vibe.description,
+                    "duration": metadata.get("duration", 10)
+                },
+                name="generate_audio"
+            ))
+            
+        else:
+            # Default: Image pipeline
+            steps.append(PipelineStep(
+                tool="image_generate",
+                config={
+                    "prompt": vibe.description,
+                    "size": metadata.get("image_size", "1024x1024")
+                },
+                name="generate_image"
+            ))
+            
+            if wants_upscale:
+                steps.append(PipelineStep(
+                    tool="image_upscale",
+                    config={"scale": metadata.get("upscale_factor", 2)},
+                    name="upscale_image",
+                    on_error="skip"
+                ))
+        
+        return Pipeline(
+            steps=steps,
+            tool_registry=self.tool_registry,
+            name=f"vibe_pipeline_{vibe.domain or 'general'}",
+            description=f"Pipeline for: {vibe.description[:50]}..."
+        )
+    
+    async def execute_pipeline(self, vibe: Vibe) -> PipelineResult:
+        """
+        Execute a vibe as a pipeline (deterministic tool chaining).
+        
+        Use this instead of execute() when you want:
+        - Faster execution (no LLM decomposition)
+        - Deterministic behavior
+        - Direct tool chaining
+        
+        Args:
+            vibe: The creative intent to execute
+        
+        Returns:
+            PipelineResult with outputs from all steps
+        """
+        pipeline = self.vibe_to_pipeline(vibe)
+        
+        initial_input = {
+            "prompt": vibe.description,
+            "style": vibe.style,
+            **(vibe.metadata or {})
+        }
+        
+        return await pipeline.execute(initial_input)
+    
+    def create_pipeline_builder(self, name: str) -> PipelineBuilder:
+        """
+        Create a PipelineBuilder for manual pipeline construction.
+        
+        Example:
+            builder = planner.create_pipeline_builder("my_pipeline")
+            pipeline = (builder
+                .add("image_generate", size="1024x1024")
+                .add("upscale", scale=2)
+                .build())
+            result = await pipeline.execute({"prompt": "..."})
+        
+        Args:
+            name: Name for the pipeline
+        
+        Returns:
+            PipelineBuilder instance
+        """
+        return PipelineBuilder(name)

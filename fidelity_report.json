@@ -1,0 +1,74 @@
+{
+  "prompt": "cyberpunk samurai warrior standing in neon-lit Tokyo street, rain, cinematic lighting, detailed armor, moody atmosphere",
+  "capability": "text_to_image",
+  "num_runs": 3,
+  "scores": [
+    {
+      "prompt": "cyberpunk samurai warrior standing in neon-lit Tokyo street, rain, cinematic lighting, detailed armor, moody atmosphere",
+      "output_url": "http://192.168.1.143:8188/view?filename=vibe_00013_.png",
+      "quality_score": 6.0,
+      "feedback": "A cyberpunk samurai warrior stands in a neon-lit Tokyo street with rain. The warrior is facing away from the viewer. The image captures a moody atmosphere with reflections on the wet street.",
+      "strengths": [
+        "Good atmosphere with neon lights and rain",
+        "Successfully conveys the cyberpunk and samurai theme"
+      ],
+      "weaknesses": [
+        "Lack of detail in the armor",
+        "The character is facing away, which is less engaging"
+      ],
+      "attempt_number": 2,
+      "timestamp": "2026-02-05T21:02:43.822472"
+    },
+    {
+      "prompt": "cyberpunk samurai warrior standing in neon-lit Tokyo street, rain, cinematic lighting, detailed armor, moody atmosphere",
+      "output_url": "http://192.168.1.143:8188/view?filename=vibe_00015_.png",
+      "quality_score": 6.0,
+      "feedback": "A samurai warrior stands in a neon-lit Tokyo street during a rainstorm. The scene is somewhat blurry, and the armor details are lacking. The atmosphere is present but could be improved.",
+      "strengths": [
+        "Successfully captures the cyberpunk neon aesthetic",
+        "The rain effect is noticeable"
+      ],
+      "weaknesses": [
+        "Lacks sharp detail, appearing somewhat blurry",
+        "Armor details are not intricate enough"
+      ],
+      "attempt_number": 2,
+      "timestamp": "2026-02-05T21:03:30.555893"
+    },
+    {
+      "prompt": "cyberpunk samurai warrior standing in neon-lit Tokyo street, rain, cinematic lighting, detailed armor, moody atmosphere",
+      "output_url": "http://192.168.1.143:8188/view?filename=vibe_00018_.png",
+      "quality_score": 5.0,
+      "feedback": "Analysis failed: 429 Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details.",
+      "strengths": [],
+      "weaknesses": [],
+      "attempt_number": 2,
+      "timestamp": "2026-02-05T21:04:15.549392"
+    }
+  ],
+  "statistics": {
+    "mean": 5.666666666666667,
+    "std_dev": 0.5773502691896257,
+    "min": 5.0,
+    "max": 6.0
+  },
+  "refinement": {
+    "first_attempt_mean": 0.0,
+    "refined_mean": 5.666666666666667,
+    "improvement": 5.666666666666667
+  },
+  "patterns": {
+    "common_strengths": [
+      "Good atmosphere with neon lights and rain",
+      "Successfully conveys the cyberpunk and samurai theme",
+      "Successfully captures the cyberpunk neon aesthetic",
+      "The rain effect is noticeable"
+    ],
+    "common_weaknesses": [
+      "Lack of detail in the armor",
+      "The character is facing away, which is less engaging",
+      "Lacks sharp detail, appearing somewhat blurry",
+      "Armor details are not intricate enough"
+    ]
+  }
+}

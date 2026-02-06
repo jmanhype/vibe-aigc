@@ -27,6 +27,8 @@ class Capability(Enum):
     UPSCALE = "upscale"
     INPAINT = "inpaint"
     AUDIO = "audio"
+    CHARACTER_CONSISTENCY = "character_consistency"  # IP-Adapter, LoRA character refs
+    STYLE_TRANSFER = "style_transfer"  # Style reference from images
     UNKNOWN = "unknown"
 
 
@@ -81,6 +83,14 @@ class AvailableModel:
         """Infer capability from filename patterns."""
         name = self.filename.lower()
         
+        # IP-Adapter / Character consistency models
+        if any(x in name for x in ['ipadapter', 'ip_adapter', 'ip-adapter', 'instantid', 'faceid', 'pulid']):
+            return Capability.CHARACTER_CONSISTENCY
+        
+        # Style transfer / reference models
+        if any(x in name for x in ['style', 'reference', 'clipvision']):
+            return Capability.STYLE_TRANSFER
+        
         # Video models
         if any(x in name for x in ['video', 'animate', 'motion', 'wan', 'ltx', 'svd', 'i2v', 't2v']):
             if 'i2v' in name or 'img2vid' in name:
@@ -104,6 +114,27 @@ class AvailableModel:
             return Capability.TEXT_TO_IMAGE
         
         return Capability.UNKNOWN
+    
+    @property
+    def is_ipadapter(self) -> bool:
+        """Check if this is an IP-Adapter model."""
+        name = self.filename.lower()
+        return any(x in name for x in ['ipadapter', 'ip_adapter', 'ip-adapter'])
+    
+    @property
+    def is_character_lora(self) -> bool:
+        """Check if this is a character/person LoRA."""
+        name = self.filename.lower()
+        # Character LoRAs often have these patterns
+        return self.category == 'loras' and any(x in name for x in [
+            'character', 'person', 'face', 'portrait', 'style', 'celeb'
+        ])
+    
+    @property
+    def is_clip_vision(self) -> bool:
+        """Check if this is a CLIP Vision model."""
+        name = self.filename.lower()
+        return self.category == 'clip_vision' or 'clipvision' in name or 'clip_vision' in name
 
 
 @dataclass
@@ -125,6 +156,55 @@ class SystemCapabilities:
                 if model.inferred_capability == cap:
                     result.append(model)
         return result
+    
+    def get_ipadapter_models(self) -> List[AvailableModel]:
+        """Get all IP-Adapter models."""
+        result = []
+        for category in ['ipadapter', 'instantid', 'pulid', 'faceid']:
+            result.extend(self.models.get(category, []))
+        # Also check other categories for IP-Adapter files
+        for category_models in self.models.values():
+            for model in category_models:
+                if model.is_ipadapter and model not in result:
+                    result.append(model)
+        return result
+    
+    def get_clip_vision_models(self) -> List[AvailableModel]:
+        """Get all CLIP Vision models."""
+        result = list(self.models.get('clip_vision', []))
+        for category_models in self.models.values():
+            for model in category_models:
+                if model.is_clip_vision and model not in result:
+                    result.append(model)
+        return result
+    
+    def get_character_loras(self) -> List[AvailableModel]:
+        """Get all character/person LoRAs."""
+        result = []
+        for model in self.models.get('loras', []):
+            if model.is_character_lora:
+                result.append(model)
+        return result
+    
+    def has_ipadapter_support(self) -> bool:
+        """Check if full IP-Adapter workflow is possible."""
+        # Need IP-Adapter node + IP-Adapter model + CLIP Vision
+        node_names = set(n.lower() for n in self.nodes.keys())
+        has_ipadapter_node = any('ipadapter' in n for n in node_names)
+        has_ipadapter_model = bool(self.get_ipadapter_models())
+        has_clip_vision = bool(self.get_clip_vision_models()) or 'CLIPVisionLoader' in self.nodes
+        return has_ipadapter_node and (has_ipadapter_model or has_clip_vision)
+    
+    def has_reference_image_support(self) -> bool:
+        """Check if any reference image workflow is possible (IP-Adapter, ByteDance, etc.)."""
+        node_names = set(n.lower() for n in self.nodes.keys())
+        # Check for various reference image approaches
+        return (
+            any('ipadapter' in n for n in node_names) or
+            any('reference' in n and 'image' in n for n in node_names) or
+            any('bytedance' in n.lower() for n in node_names) or
+            'CLIPVisionEncode' in self.nodes  # Can encode reference images
+        )
     
     def summary(self) -> str:
         """Human-readable summary."""
@@ -148,6 +228,15 @@ class SystemCapabilities:
                 lines.append(f"  [YES] {cap.value}: {len(models)} models")
             elif cap != Capability.UNKNOWN:
                 lines.append(f"  [NO]  {cap.value}")
+        
+        # Character consistency details
+        lines.append("")
+        lines.append("Character Consistency:")
+        lines.append(f"  IP-Adapter support: {'YES' if self.has_ipadapter_support() else 'NO'}")
+        lines.append(f"  Reference image support: {'YES' if self.has_reference_image_support() else 'NO'}")
+        lines.append(f"  IP-Adapter models: {len(self.get_ipadapter_models())}")
+        lines.append(f"  CLIP Vision models: {len(self.get_clip_vision_models())}")
+        lines.append(f"  Character LoRAs: {len(self.get_character_loras())}")
         
         return "\n".join(lines)
 
@@ -231,10 +320,12 @@ class SystemDiscovery:
         """Discover available models via /models/* endpoints."""
         models = {}
         
-        # Standard ComfyUI model categories
+        # Standard ComfyUI model categories + IP-Adapter related
         categories = [
             "checkpoints", "unet", "diffusion_models", "vae", 
-            "clip", "loras", "upscale_models", "embeddings"
+            "clip", "loras", "upscale_models", "embeddings",
+            # IP-Adapter / Character consistency related
+            "ipadapter", "clip_vision", "insightface", "instantid", "pulid", "faceid"
         ]
         
         for category in categories:
@@ -274,6 +365,20 @@ class SystemDiscovery:
         
         # Also check node availability for capabilities
         node_names = set(n.lower() for n in nodes.keys())
+        
+        # IP-Adapter / Character consistency nodes
+        ip_adapter_patterns = ['ipadapter', 'ip_adapter', 'ip-adapter', 'instantid', 'faceid', 'pulid']
+        if any(any(p in n for p in ip_adapter_patterns) for n in node_names):
+            capabilities.add(Capability.CHARACTER_CONSISTENCY)
+        
+        # CLIP Vision (needed for IP-Adapter) - partial support for character refs
+        if any('clipvision' in n or 'clip_vision' in n for n in node_names):
+            # CLIP Vision enables style/image reference even without full IP-Adapter
+            capabilities.add(Capability.STYLE_TRANSFER)
+        
+        # ByteDance reference nodes (alternative to IP-Adapter)
+        if any('reference' in n and ('image' in n or 'bytedance' in n) for n in node_names):
+            capabilities.add(Capability.CHARACTER_CONSISTENCY)
         
         # Video nodes
         if any('video' in n or 'animate' in n for n in node_names):

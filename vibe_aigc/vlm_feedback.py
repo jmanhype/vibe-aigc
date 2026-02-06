@@ -13,7 +13,7 @@ This is the "eyes" of the AIGC system - it can SEE what it generates.
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from pathlib import Path
 from enum import Enum
 
@@ -69,6 +69,80 @@ class VLMFeedback:
     Uses Gemini to analyze generated content and provide
     actionable feedback for the MetaPlanner.
     """
+    
+    # Weakness patterns → prompt refinements mapping
+    # Key: pattern to match in weakness text (lowercase)
+    # Value: list of prompt additions to fix the issue
+    WEAKNESS_REFINEMENTS: Dict[str, List[str]] = {
+        # Lighting issues
+        "lighting": ["dramatic lighting", "volumetric rays"],
+        "flat light": ["dramatic lighting", "volumetric", "rim lighting"],
+        "harsh light": ["soft diffused lighting", "golden hour"],
+        "dark": ["well-lit", "bright ambient light"],
+        "overexposed": ["balanced exposure", "natural lighting"],
+        "underexposed": ["bright lighting", "fill light"],
+        "shadow": ["deep shadows", "chiaroscuro", "dramatic shadows"],
+        
+        # Composition issues
+        "centered": ["rule of thirds", "dynamic composition", "off-center subject"],
+        "composition": ["balanced composition", "visual flow", "golden ratio"],
+        "boring": ["dynamic angle", "interesting perspective"],
+        "static": ["dynamic pose", "sense of motion", "action shot"],
+        "framing": ["well-framed", "cinematic framing"],
+        "cropped": ["full frame", "complete composition"],
+        
+        # Color issues
+        "muddy color": ["vibrant colors", "high saturation", "color pop"],
+        "dull color": ["rich saturated colors", "vivid tones"],
+        "color": ["harmonious color palette", "color grading"],
+        "saturation": ["balanced saturation", "rich colors"],
+        "washed out": ["deep contrast", "saturated colors"],
+        "oversaturated": ["natural color balance", "subtle tones"],
+        
+        # Detail/Sharpness issues
+        "blurry": ["sharp focus", "crisp details", "8k uhd"],
+        "blur": ["tack sharp", "high detail", "crystal clear"],
+        "soft": ["sharp details", "crisp edges"],
+        "lack detail": ["intricate details", "fine textures", "highly detailed"],
+        "low detail": ["ultra detailed", "8k resolution", "intricate"],
+        "noise": ["clean image", "noise-free", "pristine quality"],
+        "grainy": ["smooth gradients", "clean render"],
+        "artifact": ["clean render", "artifact-free", "pristine"],
+        
+        # Quality issues
+        "quality": ["masterpiece", "best quality", "professional"],
+        "amateur": ["professional quality", "expert craftsmanship"],
+        "generic": ["unique style", "distinctive aesthetic"],
+        
+        # Anatomy/Form issues
+        "anatomy": ["correct anatomy", "proper proportions"],
+        "proportion": ["anatomically correct", "proper proportions"],
+        "distort": ["undistorted", "proper form", "correct proportions"],
+        "hand": ["detailed hands", "correct hand anatomy"],
+        "finger": ["five fingers", "proper hand structure"],
+        "face": ["detailed face", "expressive features"],
+        "eye": ["detailed eyes", "proper eye anatomy"],
+        
+        # Style issues
+        "style": ["consistent style", "cohesive aesthetic"],
+        "inconsistent": ["unified style", "coherent design"],
+        "realistic": ["photorealistic", "hyperrealistic", "lifelike"],
+        
+        # Texture issues
+        "texture": ["rich textures", "tactile detail", "material definition"],
+        "smooth": ["textured surfaces", "natural imperfections"],
+        "plastic": ["natural materials", "organic textures"],
+        
+        # Depth/Dimension issues
+        "flat": ["depth of field", "3D depth", "dimensional"],
+        "depth": ["strong depth", "layered composition", "foreground-background separation"],
+        "2d": ["volumetric", "three-dimensional", "sculptural"],
+        
+        # Motion (for video)
+        "jerky": ["smooth motion", "fluid movement"],
+        "flicker": ["temporal consistency", "stable frames"],
+        "morph": ["consistent forms", "stable identity"],
+    }
     
     def __init__(
         self,
@@ -281,18 +355,123 @@ Focus on motion quality and temporal consistency."""
                 raw_response=text
             )
     
-    def suggest_improvements(self, feedback: FeedbackResult, current_prompt: str) -> str:
-        """Generate an improved prompt based on feedback."""
-        if not feedback.prompt_improvements:
-            return current_prompt
+    def refine_prompt(self, original: str, feedback: FeedbackResult) -> str:
+        """
+        Intelligently refine prompt based on detected weaknesses.
         
-        # Add top 3 improvements
-        additions = ", ".join(feedback.prompt_improvements[:3])
-        return f"{current_prompt}, {additions}"
+        This is the SMART refinement method that:
+        1. Parses weaknesses for actionable patterns
+        2. Maps patterns to specific prompt additions
+        3. Deduplicates and orders refinements
+        4. Combines with VLM's direct suggestions
+        
+        Args:
+            original: The original prompt
+            feedback: VLM feedback with weaknesses
+            
+        Returns:
+            Refined prompt with targeted improvements
+        """
+        refinements_set: set = set()
+        original_lower = original.lower()
+        
+        # 1. Parse weaknesses and match to refinement patterns
+        for weakness in feedback.weaknesses:
+            weakness_lower = weakness.lower()
+            
+            for pattern, additions in self.WEAKNESS_REFINEMENTS.items():
+                if pattern in weakness_lower:
+                    for addition in additions:
+                        # Don't add if already in original prompt
+                        if addition.lower() not in original_lower:
+                            refinements_set.add(addition)
+        
+        # 2. Add VLM's direct prompt_improvements (top 3, filtered)
+        for improvement in feedback.prompt_improvements[:3]:
+            improvement_clean = improvement.strip().lower()
+            # Skip if it's just generic advice or already covered
+            if len(improvement_clean) > 3 and improvement_clean not in original_lower:
+                # Check if it's not already captured by our refinements
+                already_covered = any(
+                    ref.lower() in improvement_clean or improvement_clean in ref.lower()
+                    for ref in refinements_set
+                )
+                if not already_covered:
+                    refinements_set.add(improvement.strip())
+        
+        # 3. Limit total refinements to avoid prompt bloat
+        refinements = list(refinements_set)[:6]
+        
+        if not refinements:
+            return original
+        
+        # 4. Construct refined prompt
+        refinement_str = ", ".join(refinements)
+        
+        # Check if original already ends with quality terms
+        quality_endings = ["quality", "detailed", "resolution", "masterpiece"]
+        original_stripped = original.rstrip(" ,.")
+        
+        # Smart insertion: put refinements before closing quality terms if present
+        for ending in quality_endings:
+            if original_stripped.lower().endswith(ending):
+                # Find last comma and insert before quality terms
+                last_comma = original.rfind(",")
+                if last_comma > len(original) // 2:  # Only if comma is in latter half
+                    return f"{original[:last_comma]}, {refinement_str}{original[last_comma:]}"
+        
+        return f"{original}, {refinement_str}"
+    
+    def suggest_improvements(self, feedback: FeedbackResult, current_prompt: str) -> str:
+        """Generate an improved prompt based on feedback.
+        
+        This is the main entry point used by VibeBackend.
+        Uses refine_prompt() for smart refinement.
+        """
+        # Use the smart refinement method
+        return self.refine_prompt(current_prompt, feedback)
     
     def should_retry(self, feedback: FeedbackResult) -> bool:
         """Determine if generation should be retried."""
         return feedback.quality_score < self.quality_threshold
+    
+    def get_refinement_summary(self, original: str, feedback: FeedbackResult) -> Dict[str, Any]:
+        """Get detailed breakdown of what refinements were applied and why.
+        
+        Useful for debugging and understanding the refinement process.
+        """
+        applied_refinements = []
+        original_lower = original.lower()
+        
+        for weakness in feedback.weaknesses:
+            weakness_lower = weakness.lower()
+            matched_patterns = []
+            
+            for pattern, additions in self.WEAKNESS_REFINEMENTS.items():
+                if pattern in weakness_lower:
+                    for addition in additions:
+                        if addition.lower() not in original_lower:
+                            matched_patterns.append({
+                                "pattern": pattern,
+                                "addition": addition
+                            })
+            
+            if matched_patterns:
+                applied_refinements.append({
+                    "weakness": weakness,
+                    "refinements": matched_patterns
+                })
+        
+        refined = self.refine_prompt(original, feedback)
+        
+        return {
+            "original_prompt": original,
+            "refined_prompt": refined,
+            "quality_score": feedback.quality_score,
+            "weaknesses_parsed": len(feedback.weaknesses),
+            "refinements_applied": applied_refinements,
+            "vlm_suggestions_used": feedback.prompt_improvements[:3]
+        }
 
 
 def create_vlm_feedback(api_key: Optional[str] = None) -> VLMFeedback:

@@ -297,8 +297,18 @@ class VibeBackend:
                     
                     # Refine prompt for next attempt
                     if attempt < self.max_attempts - 1:
+                        old_prompt = current_prompt
                         current_prompt = self.vlm.suggest_improvements(feedback, current_prompt)
-                        print(f"Refined prompt: {current_prompt[:50]}...")
+                        
+                        # Log refinement details
+                        if hasattr(self.vlm, 'get_refinement_summary'):
+                            summary = self.vlm.get_refinement_summary(old_prompt, feedback)
+                            if summary['refinements_applied']:
+                                print(f"  Applied refinements for weaknesses:")
+                                for r in summary['refinements_applied'][:3]:
+                                    print(f"    - '{r['weakness'][:40]}...' → {[x['addition'] for x in r['refinements'][:2]]}")
+                        
+                        print(f"  Refined prompt: {current_prompt[:80]}...")
                 else:
                     # VLM failed, return successful result
                     result.attempts = attempt + 1
