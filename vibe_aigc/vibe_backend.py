@@ -150,6 +150,10 @@ class VibeBackend:
             import random
             request.seed = random.randint(0, 2**32 - 1)
         
+        # Special handling for TEXT_TO_VIDEO: use I2V pipeline
+        if request.capability == Capability.TEXT_TO_VIDEO:
+            return await self._generate_video_via_i2v(request)
+        
         # Try to get workflow
         workflow = await self._get_workflow(request)
         if not workflow:
@@ -387,6 +391,199 @@ class VibeBackend:
                 
         except Exception as e:
             return GenerationResult(success=False, error=str(e))
+    
+    async def _generate_video_via_i2v(self, request: GenerationRequest) -> GenerationResult:
+        """Generate video via Image-to-Video pipeline.
+        
+        Two-step process:
+        1. Generate base image with TEXT_TO_IMAGE
+        2. Animate with IMAGE_TO_VIDEO
+        """
+        print("\n[1/2] Generating base image...")
+        
+        # Step 1: Generate image
+        image_workflow = self._create_flux_image_workflow(
+            prompt=request.prompt,
+            negative=request.negative_prompt,
+            width=request.width,
+            height=request.height,
+            seed=request.seed
+        )
+        
+        image_result = await self._execute_workflow(image_workflow)
+        if not image_result.success:
+            return GenerationResult(
+                success=False,
+                error=f"Image generation failed: {image_result.error}"
+            )
+        
+        print(f"    Base image: {image_result.output_path}")
+        
+        # Step 2: Upload image and animate
+        print("\n[2/2] Animating with I2V...")
+        
+        # Download image
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_result.output_url) as resp:
+                image_data = await resp.read()
+            
+            # Upload to ComfyUI
+            form = aiohttp.FormData()
+            form.add_field('image', image_data, filename='input.png', content_type='image/png')
+            
+            async with session.post(f"{self.url}/upload/image", data=form) as resp:
+                upload_result = await resp.json()
+                uploaded_name = upload_result.get("name", "input.png")
+                print(f"    Uploaded: {uploaded_name}")
+        
+        # Create I2V workflow
+        i2v_workflow = self._create_wan_i2v_workflow(
+            uploaded_image=uploaded_name,
+            prompt=request.prompt,
+            negative=request.negative_prompt,
+            width=request.width,
+            height=request.height,
+            frames=request.frames,
+            seed=request.seed
+        )
+        
+        video_result = await self._execute_workflow(i2v_workflow)
+        if not video_result.success:
+            return GenerationResult(
+                success=False,
+                error=f"Animation failed: {video_result.error}"
+            )
+        
+        print(f"    Video: {video_result.output_path}")
+        return video_result
+    
+    def _create_flux_image_workflow(
+        self, prompt: str, negative: str, width: int, height: int, seed: int
+    ) -> Dict[str, Any]:
+        """Create FLUX image generation workflow."""
+        return {
+            "1": {
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": "flux1-dev-fp8.safetensors"}
+            },
+            "2": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": prompt, "clip": ["1", 1]}
+            },
+            "3": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": negative or "blurry, distorted, ugly", "clip": ["1", 1]}
+            },
+            "4": {
+                "class_type": "EmptyLatentImage",
+                "inputs": {"width": width, "height": height, "batch_size": 1}
+            },
+            "5": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": seed,
+                    "steps": 20,
+                    "cfg": 3.5,
+                    "sampler_name": "euler",
+                    "scheduler": "simple",
+                    "denoise": 1.0,
+                    "model": ["1", 0],
+                    "positive": ["2", 0],
+                    "negative": ["3", 0],
+                    "latent_image": ["4", 0]
+                }
+            },
+            "6": {
+                "class_type": "VAEDecode",
+                "inputs": {"samples": ["5", 0], "vae": ["1", 2]}
+            },
+            "7": {
+                "class_type": "SaveImage",
+                "inputs": {"images": ["6", 0], "filename_prefix": "vibe_base"}
+            }
+        }
+    
+    def _create_wan_i2v_workflow(
+        self, uploaded_image: str, prompt: str, negative: str,
+        width: int, height: int, frames: int, seed: int
+    ) -> Dict[str, Any]:
+        """Create Wan 2.1 I2V workflow."""
+        return {
+            "1": {
+                "class_type": "UNETLoader",
+                "inputs": {
+                    "unet_name": "I2V/Wan2_1-I2V-14B-480p_fp8_e4m3fn_scaled_KJ.safetensors",
+                    "weight_dtype": "fp8_e4m3fn"
+                }
+            },
+            "2": {
+                "class_type": "CLIPLoader",
+                "inputs": {
+                    "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+                    "type": "wan"
+                }
+            },
+            "3": {
+                "class_type": "VAELoader",
+                "inputs": {"vae_name": "wan_2.1_vae.safetensors"}
+            },
+            "4": {
+                "class_type": "LoadImage",
+                "inputs": {"image": uploaded_image}
+            },
+            "5": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": prompt + ", smooth motion, cinematic", "clip": ["2", 0]}
+            },
+            "6": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": negative or "static, frozen, blurry, distorted", "clip": ["2", 0]}
+            },
+            "7": {
+                "class_type": "WanImageToVideo",
+                "inputs": {
+                    "positive": ["5", 0],
+                    "negative": ["6", 0],
+                    "vae": ["3", 0],
+                    "width": width,
+                    "height": height,
+                    "length": frames,
+                    "batch_size": 1,
+                    "start_image": ["4", 0]
+                }
+            },
+            "8": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "seed": seed,
+                    "steps": 30,
+                    "cfg": 5.0,
+                    "sampler_name": "euler",
+                    "scheduler": "normal",
+                    "denoise": 1.0,
+                    "model": ["1", 0],
+                    "positive": ["7", 0],
+                    "negative": ["7", 1],
+                    "latent_image": ["7", 2]
+                }
+            },
+            "9": {
+                "class_type": "VAEDecode",
+                "inputs": {"samples": ["8", 0], "vae": ["3", 0]}
+            },
+            "10": {
+                "class_type": "VHS_VideoCombine",
+                "inputs": {
+                    "images": ["9", 0],
+                    "frame_rate": 16,
+                    "loop_count": 0,
+                    "filename_prefix": "vibe_i2v",
+                    "format": "image/webp",
+                    "pingpong": False,
+                    "save_output": True
+                }
+            }
+        }
     
     def status(self) -> str:
         """Get backend status."""
