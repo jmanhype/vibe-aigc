@@ -1,575 +1,661 @@
+"""Workflow Composer — Build workflows from atomic tools.
+
+Paper Section 5.4: "define data-flow topology"
+
+Two modes:
+1. SELECT pre-made workflows (WorkflowRegistry)
+2. COMPOSE new workflows from atomic tools (this module)
+
+Atomic tools are small, reusable building blocks:
+- Single nodes (TextEncode, Sample, etc.)
+- Node groups (ModelLoader + VAE as a unit)
+- Mini-workflows (encode + sample + decode)
+
+The Composer wires them together based on capability requirements.
 """
-Workflow Composer - AI agent that edits ComfyUI workflows based on VLM feedback.
 
-Uses:
-- Gemini VLM to analyze generated outputs
-- Comfy-Pilot to modify workflows
-- Iterative improvement loop
+from typing import Any, Dict, List, Optional, Set, Tuple, Callable
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from abc import ABC, abstractmethod
 
-The AI can SEE what it generates and MODIFY the workflow to improve it.
-"""
 
-import asyncio
-import aiohttp
-import json
-import os
-import sys
-from pathlib import Path
-from typing import Optional, Dict, Any, List
-from dataclasses import dataclass
-
-# Add comfy-pilot to path
-COMFY_PILOT_PATH = Path("C:/ComfyUI_windows_portable/ComfyUI/custom_nodes/comfy-pilot")
-if COMFY_PILOT_PATH.exists():
-    sys.path.insert(0, str(COMFY_PILOT_PATH))
-
-try:
-    import google.generativeai as genai
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
-try:
-    from PIL import Image
-    HAS_PIL = True
-except ImportError:
-    HAS_PIL = False
+class PortType(Enum):
+    """Data types that flow between tools."""
+    MODEL = "MODEL"
+    CLIP = "CLIP"
+    VAE = "VAE"
+    CONDITIONING = "CONDITIONING"
+    LATENT = "LATENT"
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+    NOISE = "NOISE"
+    SIGMAS = "SIGMAS"
+    GUIDER = "GUIDER"
+    SAMPLER = "SAMPLER"
+    STRING = "STRING"
+    INT = "INT"
+    FLOAT = "FLOAT"
 
 
 @dataclass
-class ComposerConfig:
-    """Configuration for the workflow composer."""
-    comfyui_url: str = "http://127.0.0.1:8188"
-    gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini-flash-latest"
-    perplexity_api_key: Optional[str] = None
-    max_iterations: int = 3
-    quality_threshold: float = 8.0  # Stop if quality >= this
-    output_dir: Path = Path("./composed_outputs")
+class Port:
+    """Input or output port on an atomic tool."""
+    name: str
+    port_type: PortType
+    optional: bool = False
+
+
+@dataclass
+class AtomicTool(ABC):
+    """Base class for composable atomic tools.
+    
+    Each tool represents a capability that can be wired into a workflow.
+    """
+    name: str
+    description: str = ""
+    
+    @property
+    @abstractmethod
+    def inputs(self) -> List[Port]:
+        """What this tool needs."""
+        pass
+    
+    @property
+    @abstractmethod
+    def outputs(self) -> List[Port]:
+        """What this tool produces."""
+        pass
+    
+    @abstractmethod
+    def to_nodes(self, node_id_start: int, connections: Dict[str, Tuple[str, int]]) -> Tuple[Dict[str, Any], int]:
+        """Convert to ComfyUI node(s).
+        
+        Args:
+            node_id_start: First node ID to use
+            connections: Map of input_name -> (source_node_id, source_slot)
+            
+        Returns:
+            (nodes_dict, next_node_id)
+        """
+        pass
+
+
+@dataclass 
+class NodeTool(AtomicTool):
+    """A single ComfyUI node as an atomic tool."""
+    node_type: str = ""
+    input_ports: List[Port] = field(default_factory=list)
+    output_ports: List[Port] = field(default_factory=list)
+    defaults: Dict[str, Any] = field(default_factory=dict)
+    
+    @property
+    def inputs(self) -> List[Port]:
+        return self.input_ports
+    
+    @property
+    def outputs(self) -> List[Port]:
+        return self.output_ports
+    
+    def to_nodes(self, node_id_start: int, connections: Dict[str, Tuple[str, int]]) -> Tuple[Dict[str, Any], int]:
+        node_id = str(node_id_start)
+        
+        inputs = dict(self.defaults)
+        for port in self.input_ports:
+            if port.name in connections:
+                inputs[port.name] = list(connections[port.name])
+        
+        nodes = {
+            node_id: {
+                "class_type": self.node_type,
+                "inputs": inputs
+            }
+        }
+        
+        return nodes, node_id_start + 1
+
+
+# ============================================================================
+# STANDARD ATOMIC TOOLS — The building blocks
+# ============================================================================
+
+class Tools:
+    """Library of standard atomic tools."""
+    
+    @staticmethod
+    def model_loader(model_type: str = "checkpoint") -> NodeTool:
+        """Load a model (checkpoint, unet, or diffusion model)."""
+        if model_type == "checkpoint":
+            return NodeTool(
+                name="model_loader",
+                description="Load a checkpoint model",
+                node_type="CheckpointLoaderSimple",
+                input_ports=[],
+                output_ports=[
+                    Port("model", PortType.MODEL),
+                    Port("clip", PortType.CLIP),
+                    Port("vae", PortType.VAE),
+                ],
+                defaults={"ckpt_name": ""}
+            )
+        elif model_type == "unet":
+            return NodeTool(
+                name="unet_loader",
+                description="Load a UNET/diffusion model",
+                node_type="UNETLoader",
+                input_ports=[],
+                output_ports=[Port("model", PortType.MODEL)],
+                defaults={"unet_name": "", "weight_dtype": "default"}
+            )
+        elif model_type == "diffusion_kj":
+            return NodeTool(
+                name="diffusion_loader_kj",
+                description="Load diffusion model (KJNodes)",
+                node_type="DiffusionModelLoaderKJ",
+                input_ports=[],
+                output_ports=[Port("model", PortType.MODEL)],
+                defaults={"model_path": "", "weight_dtype": "default"}
+            )
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+    
+    @staticmethod
+    def clip_loader(clip_type: str = "default") -> NodeTool:
+        """Load a CLIP/text encoder."""
+        return NodeTool(
+            name="clip_loader",
+            description="Load CLIP text encoder",
+            node_type="CLIPLoader",
+            input_ports=[],
+            output_ports=[Port("clip", PortType.CLIP)],
+            defaults={"clip_name": "", "type": clip_type}
+        )
+    
+    @staticmethod
+    def vae_loader() -> NodeTool:
+        """Load a VAE."""
+        return NodeTool(
+            name="vae_loader",
+            description="Load VAE",
+            node_type="VAELoader",
+            input_ports=[],
+            output_ports=[Port("vae", PortType.VAE)],
+            defaults={"vae_name": ""}
+        )
+    
+    @staticmethod
+    def text_encode() -> NodeTool:
+        """Encode text to conditioning."""
+        return NodeTool(
+            name="text_encode",
+            description="Encode text prompt to conditioning",
+            node_type="CLIPTextEncode",
+            input_ports=[Port("clip", PortType.CLIP)],
+            output_ports=[Port("conditioning", PortType.CONDITIONING)],
+            defaults={"text": ""}
+        )
+    
+    @staticmethod
+    def empty_latent(for_video: bool = False) -> NodeTool:
+        """Create empty latent image/video."""
+        if for_video:
+            return NodeTool(
+                name="empty_latent_video",
+                description="Create empty latent for video",
+                node_type="EmptyLatentImage",
+                input_ports=[],
+                output_ports=[Port("latent", PortType.LATENT)],
+                defaults={"width": 512, "height": 512, "batch_size": 24}
+            )
+        return NodeTool(
+            name="empty_latent",
+            description="Create empty latent image",
+            node_type="EmptyLatentImage",
+            input_ports=[],
+            output_ports=[Port("latent", PortType.LATENT)],
+            defaults={"width": 512, "height": 512, "batch_size": 1}
+        )
+    
+    @staticmethod
+    def ksampler() -> NodeTool:
+        """Standard KSampler."""
+        return NodeTool(
+            name="ksampler",
+            description="Sample latents with KSampler",
+            node_type="KSampler",
+            input_ports=[
+                Port("model", PortType.MODEL),
+                Port("positive", PortType.CONDITIONING),
+                Port("negative", PortType.CONDITIONING),
+                Port("latent_image", PortType.LATENT),
+            ],
+            output_ports=[Port("latent", PortType.LATENT)],
+            defaults={
+                "seed": 0,
+                "steps": 20,
+                "cfg": 7.0,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+                "denoise": 1.0
+            }
+        )
+    
+    @staticmethod
+    def sampler_custom_advanced() -> NodeTool:
+        """Advanced sampler (for Wan, Flux, etc.)."""
+        return NodeTool(
+            name="sampler_advanced",
+            description="Advanced sampler with separate noise/guider/sigmas",
+            node_type="SamplerCustomAdvanced",
+            input_ports=[
+                Port("noise", PortType.NOISE),
+                Port("guider", PortType.GUIDER),
+                Port("sampler", PortType.SAMPLER),
+                Port("sigmas", PortType.SIGMAS),
+                Port("latent_image", PortType.LATENT),
+            ],
+            output_ports=[
+                Port("output", PortType.LATENT),
+                Port("denoised_output", PortType.LATENT),
+            ]
+        )
+    
+    @staticmethod
+    def cfg_guider() -> NodeTool:
+        """CFG Guider for advanced sampling."""
+        return NodeTool(
+            name="cfg_guider",
+            description="Classifier-free guidance guider",
+            node_type="CFGGuider",
+            input_ports=[
+                Port("model", PortType.MODEL),
+                Port("positive", PortType.CONDITIONING),
+                Port("negative", PortType.CONDITIONING),
+            ],
+            output_ports=[Port("guider", PortType.GUIDER)],
+            defaults={"cfg": 6.0}
+        )
+    
+    @staticmethod
+    def basic_scheduler() -> NodeTool:
+        """Basic scheduler for sigmas."""
+        return NodeTool(
+            name="basic_scheduler",
+            description="Generate sigmas schedule",
+            node_type="BasicScheduler",
+            input_ports=[Port("model", PortType.MODEL)],
+            output_ports=[Port("sigmas", PortType.SIGMAS)],
+            defaults={"scheduler": "simple", "steps": 20, "denoise": 1.0}
+        )
+    
+    @staticmethod
+    def random_noise() -> NodeTool:
+        """Random noise generator."""
+        return NodeTool(
+            name="random_noise",
+            description="Generate random noise",
+            node_type="RandomNoise",
+            input_ports=[],
+            output_ports=[Port("noise", PortType.NOISE)],
+            defaults={"noise_seed": 0}
+        )
+    
+    @staticmethod
+    def ksampler_select() -> NodeTool:
+        """Select sampler algorithm."""
+        return NodeTool(
+            name="ksampler_select",
+            description="Select sampling algorithm",
+            node_type="KSamplerSelect",
+            input_ports=[],
+            output_ports=[Port("sampler", PortType.SAMPLER)],
+            defaults={"sampler_name": "euler"}
+        )
+    
+    @staticmethod
+    def vae_decode() -> NodeTool:
+        """Decode latents to images."""
+        return NodeTool(
+            name="vae_decode",
+            description="Decode latents to images",
+            node_type="VAEDecode",
+            input_ports=[
+                Port("samples", PortType.LATENT),
+                Port("vae", PortType.VAE),
+            ],
+            output_ports=[Port("image", PortType.IMAGE)]
+        )
+    
+    @staticmethod
+    def vae_encode() -> NodeTool:
+        """Encode images to latents."""
+        return NodeTool(
+            name="vae_encode",
+            description="Encode images to latents",
+            node_type="VAEEncode",
+            input_ports=[
+                Port("pixels", PortType.IMAGE),
+                Port("vae", PortType.VAE),
+            ],
+            output_ports=[Port("latent", PortType.LATENT)]
+        )
+    
+    @staticmethod
+    def load_image() -> NodeTool:
+        """Load image from file."""
+        return NodeTool(
+            name="load_image",
+            description="Load image from file",
+            node_type="LoadImage",
+            input_ports=[],
+            output_ports=[
+                Port("image", PortType.IMAGE),
+                Port("mask", PortType.IMAGE),
+            ],
+            defaults={"image": ""}
+        )
+    
+    @staticmethod
+    def save_image() -> NodeTool:
+        """Save images to file."""
+        return NodeTool(
+            name="save_image",
+            description="Save images to file",
+            node_type="SaveImage",
+            input_ports=[Port("images", PortType.IMAGE)],
+            output_ports=[],
+            defaults={"filename_prefix": "vibe"}
+        )
+    
+    @staticmethod
+    def video_combine() -> NodeTool:
+        """Combine images into video."""
+        return NodeTool(
+            name="video_combine",
+            description="Combine images into video",
+            node_type="VHS_VideoCombine",
+            input_ports=[Port("images", PortType.IMAGE)],
+            output_ports=[],
+            defaults={
+                "frame_rate": 24,
+                "loop_count": 0,
+                "filename_prefix": "vibe",
+                "format": "video/h264-mp4"
+            }
+        )
+
+
+# ============================================================================
+# WORKFLOW COMPOSER — Wire tools together
+# ============================================================================
+
+@dataclass
+class WireSpec:
+    """Specification for connecting tool outputs to inputs."""
+    from_tool: str
+    from_port: str
+    to_tool: str
+    to_port: str
+
+
+@dataclass
+class ToolInstance:
+    """An instance of a tool with configuration."""
+    tool: AtomicTool
+    instance_id: str
+    config: Dict[str, Any] = field(default_factory=dict)
 
 
 class WorkflowComposer:
-    """
-    AI agent that composes and refines ComfyUI workflows.
+    """Compose workflows from atomic tools.
     
-    Loop:
-    1. Execute workflow
-    2. Analyze output with Gemini VLM
-    3. Get improvement suggestions
-    4. Modify workflow using Comfy-Pilot patterns
-    5. Repeat until quality threshold or max iterations
-    """
-    
-    def __init__(self, config: Optional[ComposerConfig] = None):
-        self.config = config or ComposerConfig()
-        self.config.output_dir.mkdir(parents=True, exist_ok=True)
+    Usage:
+        composer = WorkflowComposer()
         
-        # Initialize Gemini if available
-        if HAS_GENAI and self.config.gemini_api_key:
-            import warnings
-            warnings.filterwarnings('ignore')
-            genai.configure(api_key=self.config.gemini_api_key)
-            self.vlm = genai.GenerativeModel(self.config.gemini_model)
-        else:
-            self.vlm = None
+        # Add tools
+        composer.add("loader", Tools.model_loader("checkpoint"), ckpt_name="model.safetensors")
+        composer.add("pos_encode", Tools.text_encode(), text="a cat")
+        composer.add("neg_encode", Tools.text_encode(), text="bad quality")
+        composer.add("latent", Tools.empty_latent())
+        composer.add("sampler", Tools.ksampler(), steps=20, cfg=7.0)
+        composer.add("decode", Tools.vae_decode())
+        composer.add("save", Tools.save_image())
         
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.history: List[Dict[str, Any]] = []
+        # Wire them together
+        composer.wire("loader", "model", "sampler", "model")
+        composer.wire("loader", "clip", "pos_encode", "clip")
+        composer.wire("loader", "clip", "neg_encode", "clip")
+        composer.wire("pos_encode", "conditioning", "sampler", "positive")
+        composer.wire("neg_encode", "conditioning", "sampler", "negative")
+        composer.wire("latent", "latent", "sampler", "latent_image")
+        composer.wire("sampler", "latent", "decode", "samples")
+        composer.wire("loader", "vae", "decode", "vae")
+        composer.wire("decode", "image", "save", "images")
+        
+        # Build
+        workflow = composer.build()
+    """
     
-    async def __aenter__(self):
-        self.session = aiohttp.ClientSession()
+    def __init__(self):
+        self.tools: Dict[str, ToolInstance] = {}
+        self.wires: List[WireSpec] = []
+    
+    def add(self, instance_id: str, tool: AtomicTool, **config) -> "WorkflowComposer":
+        """Add a tool instance."""
+        self.tools[instance_id] = ToolInstance(
+            tool=tool,
+            instance_id=instance_id,
+            config=config
+        )
         return self
     
-    async def __aexit__(self, *args):
-        if self.session:
-            await self.session.close()
+    def wire(self, from_tool: str, from_port: str, to_tool: str, to_port: str) -> "WorkflowComposer":
+        """Connect an output port to an input port."""
+        self.wires.append(WireSpec(from_tool, from_port, to_tool, to_port))
+        return self
     
-    async def get_available_nodes(self) -> Dict[str, Any]:
-        """Get all available ComfyUI nodes."""
-        async with self.session.get(f"{self.config.comfyui_url}/object_info") as resp:
-            return await resp.json()
-    
-    async def research(self, topic: str) -> str:
-        """Use Perplexity to research a topic for better prompts."""
-        if not self.config.perplexity_api_key:
-            return ""
+    def build(self) -> Dict[str, Any]:
+        """Build the ComfyUI workflow."""
+        # Assign node IDs
+        tool_to_node_id: Dict[str, str] = {}
+        current_id = 1
         
-        import urllib.request
+        for instance_id in self.tools:
+            tool_to_node_id[instance_id] = str(current_id)
+            current_id += 1
         
-        data = json.dumps({
-            "model": "sonar",
-            "messages": [{
-                "role": "user", 
-                "content": f"For AI image generation, describe the visual characteristics of: {topic}. Focus on colors, textures, lighting, composition. Be concise."
-            }]
-        }).encode()
+        # Build output port index (tool_id, port_name) -> (node_id, slot)
+        output_slots: Dict[Tuple[str, str], Tuple[str, int]] = {}
+        for instance_id, tool_instance in self.tools.items():
+            node_id = tool_to_node_id[instance_id]
+            for slot, port in enumerate(tool_instance.tool.outputs):
+                output_slots[(instance_id, port.name)] = (node_id, slot)
         
-        req = urllib.request.Request(
-            "https://api.perplexity.ai/chat/completions",
-            data=data,
-            headers={
-                "Authorization": f"Bearer {self.config.perplexity_api_key}",
-                "Content-Type": "application/json"
-            }
-        )
+        # Build connection map for each tool
+        tool_connections: Dict[str, Dict[str, Tuple[str, int]]] = {
+            tid: {} for tid in self.tools
+        }
         
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                result = json.loads(resp.read().decode())
-                return result["choices"][0]["message"]["content"]
-        except Exception as e:
-            print(f"Research error: {e}")
-            return ""
-    
-    async def execute_workflow(self, workflow: Dict) -> Dict[str, Any]:
-        """Execute a workflow and return results."""
-        async with self.session.post(
-            f"{self.config.comfyui_url}/prompt",
-            json={"prompt": workflow, "client_id": "composer"}
-        ) as resp:
-            result = await resp.json()
-            if "error" in result:
-                return {"error": result}
-            prompt_id = result["prompt_id"]
+        for wire in self.wires:
+            if (wire.from_tool, wire.from_port) in output_slots:
+                source = output_slots[(wire.from_tool, wire.from_port)]
+                tool_connections[wire.to_tool][wire.to_port] = source
         
-        # Wait for completion
-        for _ in range(120):
-            await asyncio.sleep(1)
-            async with self.session.get(
-                f"{self.config.comfyui_url}/history/{prompt_id}"
-            ) as resp:
-                hist = await resp.json()
-                if prompt_id in hist:
-                    status = hist[prompt_id].get("status", {}).get("status_str")
-                    if status == "success":
-                        return {
-                            "prompt_id": prompt_id,
-                            "outputs": hist[prompt_id].get("outputs", {})
-                        }
-                    elif status == "error":
-                        return {"error": hist[prompt_id]}
-        
-        return {"error": "Timeout waiting for workflow"}
-    
-    async def download_image(self, filename: str) -> Optional[Path]:
-        """Download an image from ComfyUI."""
-        url = f"{self.config.comfyui_url}/view?filename={filename}"
-        async with self.session.get(url) as resp:
-            if resp.status == 200:
-                path = self.config.output_dir / filename
-                path.write_bytes(await resp.read())
-                return path
-        return None
-    
-    def analyze_image(self, image_path: Path, context: str = "") -> Dict[str, Any]:
-        """Use Gemini VLM to analyze an image."""
-        if not self.vlm or not HAS_PIL:
-            return {"error": "VLM not available"}
-        
-        img = Image.open(image_path)
-        
-        prompt = f"""You are an AI art director analyzing generated images.
-
-Context: {context}
-
-Analyze this image and respond in JSON format:
-{{
-    "quality_score": <1-10>,
-    "description": "<what you see>",
-    "strengths": ["<strength1>", "<strength2>"],
-    "weaknesses": ["<weakness1>", "<weakness2>"],
-    "prompt_improvements": ["<specific prompt addition>", ...],
-    "parameter_changes": {{
-        "cfg": <suggested cfg or null>,
-        "steps": <suggested steps or null>,
-        "sampler": "<suggested sampler or null>"
-    }}
-}}
-
-Be specific about what to ADD to the prompt to fix issues.
-Focus on actionable improvements."""
-
-        response = self.vlm.generate_content([prompt, img])
-        
-        # Parse JSON from response
-        try:
-            text = response.text
-            # Extract JSON from markdown code blocks if present
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-            return json.loads(text.strip())
-        except (json.JSONDecodeError, IndexError):
-            return {
-                "quality_score": 5,
-                "description": response.text[:500],
-                "raw_response": response.text
-            }
-    
-    def analyze_video(self, video_path: Path, context: str = "") -> Dict[str, Any]:
-        """Use Gemini VLM to analyze a video file."""
-        if not self.vlm or not HAS_GENAI:
-            return {"error": "VLM not available"}
-        
-        # Upload video to Gemini
-        try:
-            video_file = genai.upload_file(str(video_path))
-            
-            # Wait for processing
-            import time
-            while video_file.state.name == "PROCESSING":
-                time.sleep(2)
-                video_file = genai.get_file(video_file.name)
-            
-            if video_file.state.name == "FAILED":
-                return {"error": f"Video processing failed: {video_file.state.name}"}
-            
-            prompt = f"""You are an AI video director analyzing AI-generated video.
-
-Context: {context}
-
-Analyze this video and respond in JSON format:
-{{
-    "quality_score": <1-10>,
-    "description": "<what happens in the video>",
-    "motion_quality": "<smooth/jerky/static>",
-    "temporal_consistency": "<consistent/flickering/morphing>",
-    "strengths": ["<strength1>", "<strength2>"],
-    "weaknesses": ["<weakness1>", "<weakness2>"],
-    "prompt_improvements": ["<specific prompt addition>", ...],
-    "parameter_changes": {{
-        "steps": <suggested steps or null>,
-        "cfg": <suggested cfg or null>,
-        "motion_scale": <suggested motion scale 0.5-1.5 or null>,
-        "frame_count": <suggested frames or null>
-    }}
-}}
-
-Focus on:
-- Motion quality and smoothness
-- Temporal consistency (do objects morph/flicker?)
-- Subject coherence across frames
-- Overall visual quality
-Be specific about improvements."""
-
-            response = self.vlm.generate_content([prompt, video_file])
-            
-            # Clean up uploaded file
-            try:
-                genai.delete_file(video_file.name)
-            except:
-                pass
-            
-            # Parse JSON from response
-            text = response.text
-            if "```json" in text:
-                text = text.split("```json")[1].split("```")[0]
-            elif "```" in text:
-                text = text.split("```")[1].split("```")[0]
-            return json.loads(text.strip())
-            
-        except Exception as e:
-            return {
-                "quality_score": 5,
-                "error": str(e),
-                "description": f"Video analysis failed: {e}"
-            }
-    
-    def analyze_media(self, media_path: Path, context: str = "") -> Dict[str, Any]:
-        """Analyze any media file (image or video)."""
-        suffix = media_path.suffix.lower()
-        
-        if suffix in ['.mp4', '.webm', '.gif', '.webp', '.mov', '.avi']:
-            # Check if it's actually animated (for webp/gif)
-            if suffix in ['.webp', '.gif']:
-                try:
-                    img = Image.open(media_path)
-                    if getattr(img, 'n_frames', 1) > 1:
-                        return self.analyze_video(media_path, context)
-                    else:
-                        return self.analyze_image(media_path, context)
-                except:
-                    pass
-            return self.analyze_video(media_path, context)
-        else:
-            return self.analyze_image(media_path, context)
-    
-    # Valid ComfyUI sampler names
-    VALID_SAMPLERS = [
-        "euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral",
-        "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde",
-        "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu",
-        "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ddim", "uni_pc",
-        "uni_pc_bh2"
-    ]
-    
-    def modify_workflow(
-        self, 
-        workflow: Dict, 
-        analysis: Dict[str, Any]
-    ) -> Dict:
-        """Modify workflow based on VLM analysis."""
-        modified = json.loads(json.dumps(workflow))  # Deep copy
-        
-        # Find prompt nodes (CLIPTextEncode)
-        for node_id, node in modified.items():
-            if node.get("class_type") == "CLIPTextEncode":
-                current_text = node["inputs"].get("text", "")
+        # Generate nodes
+        workflow = {}
+        for instance_id, tool_instance in self.tools.items():
+            # Merge defaults with config
+            tool = tool_instance.tool
+            if isinstance(tool, NodeTool):
+                node_id = tool_to_node_id[instance_id]
+                inputs = dict(tool.defaults)
+                inputs.update(tool_instance.config)
                 
-                # Check if this is positive prompt (not negative)
-                if "negative" not in node_id.lower() and not any(
-                    neg in current_text.lower() 
-                    for neg in ["blur", "bad", "ugly", "deform", "low quality"]
-                ):
-                    # Add improvements to prompt
-                    improvements = analysis.get("prompt_improvements", [])
-                    if improvements:
-                        additions = ", ".join(improvements[:3])
-                        node["inputs"]["text"] = f"{current_text}, {additions}"
+                # Add connections
+                for port_name, source in tool_connections[instance_id].items():
+                    inputs[port_name] = list(source)
+                
+                workflow[node_id] = {
+                    "class_type": tool.node_type,
+                    "inputs": inputs
+                }
         
-        # Modify KSampler parameters if suggested
-        param_changes = analysis.get("parameter_changes", {})
-        for node_id, node in modified.items():
-            if node.get("class_type") == "KSampler":
-                if param_changes.get("cfg"):
-                    node["inputs"]["cfg"] = param_changes["cfg"]
-                if param_changes.get("steps"):
-                    node["inputs"]["steps"] = min(param_changes["steps"], 30)  # Cap steps
-                if param_changes.get("sampler"):
-                    # Validate sampler name
-                    sampler = param_changes["sampler"].lower().replace(" ", "_").replace("+", "p")
-                    if sampler in self.VALID_SAMPLERS:
-                        node["inputs"]["sampler_name"] = sampler
-                    elif "dpm" in sampler:
-                        node["inputs"]["sampler_name"] = "dpmpp_2m"  # Safe default
-                # Always change seed for variation
-                node["inputs"]["seed"] = node["inputs"].get("seed", 0) + 1
-        
-        # Handle video-specific nodes
-        for node_id, node in modified.items():
-            # LTX Video scheduler
-            if node.get("class_type") == "LTXVScheduler":
-                if param_changes.get("steps"):
-                    node["inputs"]["steps"] = min(param_changes["steps"], 30)
-            
-            # LTX Video latent (frame count)
-            if node.get("class_type") == "EmptyLTXVLatentVideo":
-                if param_changes.get("frame_count"):
-                    # Ensure valid frame count (must work with model)
-                    frames = param_changes["frame_count"]
-                    # LTX works best with specific frame counts
-                    valid_frames = [9, 17, 25, 33, 41, 49]
-                    closest = min(valid_frames, key=lambda x: abs(x - frames))
-                    node["inputs"]["length"] = closest
-            
-            # AnimateDiff motion scale
-            if node.get("class_type") == "ADE_AnimateDiffLoaderWithContext":
-                if param_changes.get("motion_scale"):
-                    scale = max(0.5, min(1.5, param_changes["motion_scale"]))
-                    node["inputs"]["motion_scale"] = scale
-            
-            # Random noise seed
-            if node.get("class_type") == "RandomNoise":
-                node["inputs"]["noise_seed"] = node["inputs"].get("noise_seed", 0) + 1
-        
-        return modified
+        return workflow
     
-    async def compose(
-        self, 
-        initial_workflow: Dict,
-        goal: str = "Generate a high-quality image"
+    def validate(self) -> List[str]:
+        """Check for issues in the workflow."""
+        issues = []
+        
+        # Check all required inputs are wired
+        wired_inputs: Dict[str, Set[str]] = {tid: set() for tid in self.tools}
+        for wire in self.wires:
+            wired_inputs[wire.to_tool].add(wire.to_port)
+        
+        for instance_id, tool_instance in self.tools.items():
+            for port in tool_instance.tool.inputs:
+                if not port.optional and port.name not in wired_inputs[instance_id]:
+                    # Check if it's in config
+                    if port.name not in tool_instance.config:
+                        issues.append(f"{instance_id}: Missing required input '{port.name}'")
+        
+        return issues
+
+
+# ============================================================================
+# WORKFLOW TEMPLATES — Common patterns as composable functions
+# ============================================================================
+
+def compose_txt2img(
+    model_file: str,
+    prompt: str,
+    negative_prompt: str = "bad quality, blurry",
+    width: int = 512,
+    height: int = 512,
+    steps: int = 20,
+    cfg: float = 7.0,
+    seed: int = 0
+) -> Dict[str, Any]:
+    """Compose a text-to-image workflow."""
+    c = WorkflowComposer()
+    
+    c.add("loader", Tools.model_loader("checkpoint"), ckpt_name=model_file)
+    c.add("pos", Tools.text_encode(), text=prompt)
+    c.add("neg", Tools.text_encode(), text=negative_prompt)
+    c.add("latent", Tools.empty_latent(), width=width, height=height)
+    c.add("sampler", Tools.ksampler(), seed=seed, steps=steps, cfg=cfg)
+    c.add("decode", Tools.vae_decode())
+    c.add("save", Tools.save_image())
+    
+    c.wire("loader", "clip", "pos", "clip")
+    c.wire("loader", "clip", "neg", "clip")
+    c.wire("loader", "model", "sampler", "model")
+    c.wire("pos", "conditioning", "sampler", "positive")
+    c.wire("neg", "conditioning", "sampler", "negative")
+    c.wire("latent", "latent", "sampler", "latent_image")
+    c.wire("sampler", "latent", "decode", "samples")
+    c.wire("loader", "vae", "decode", "vae")
+    c.wire("decode", "image", "save", "images")
+    
+    return c.build()
+
+
+def compose_wan_video(
+    model_file: str,
+    clip_file: str,
+    vae_file: str,
+    prompt: str,
+    negative_prompt: str = "bad quality, blurry",
+    width: int = 512,
+    height: int = 512,
+    frames: int = 24,
+    steps: int = 6,
+    cfg: float = 6.0,
+    seed: int = 0
+) -> Dict[str, Any]:
+    """Compose a Wan-style video workflow with advanced sampling."""
+    c = WorkflowComposer()
+    
+    # Loaders
+    c.add("model", Tools.model_loader("diffusion_kj"), model_path=model_file)
+    c.add("clip", Tools.clip_loader("wan"), clip_name=clip_file)
+    c.add("vae", Tools.vae_loader(), vae_name=vae_file)
+    
+    # Encoding
+    c.add("pos", Tools.text_encode(), text=prompt)
+    c.add("neg", Tools.text_encode(), text=negative_prompt)
+    
+    # Latent
+    c.add("latent", Tools.empty_latent(for_video=True), 
+          width=width, height=height, batch_size=frames)
+    
+    # Advanced sampling components
+    c.add("noise", Tools.random_noise(), noise_seed=seed)
+    c.add("scheduler", Tools.basic_scheduler(), steps=steps)
+    c.add("guider", Tools.cfg_guider(), cfg=cfg)
+    c.add("sampler_select", Tools.ksampler_select(), sampler_name="euler")
+    c.add("sampler", Tools.sampler_custom_advanced())
+    
+    # Output
+    c.add("decode", Tools.vae_decode())
+    c.add("video", Tools.video_combine(), frame_rate=24)
+    
+    # Wiring
+    c.wire("clip", "clip", "pos", "clip")
+    c.wire("clip", "clip", "neg", "clip")
+    c.wire("model", "model", "scheduler", "model")
+    c.wire("model", "model", "guider", "model")
+    c.wire("pos", "conditioning", "guider", "positive")
+    c.wire("neg", "conditioning", "guider", "negative")
+    c.wire("noise", "noise", "sampler", "noise")
+    c.wire("guider", "guider", "sampler", "guider")
+    c.wire("sampler_select", "sampler", "sampler", "sampler")
+    c.wire("scheduler", "sigmas", "sampler", "sigmas")
+    c.wire("latent", "latent", "sampler", "latent_image")
+    c.wire("sampler", "output", "decode", "samples")
+    c.wire("vae", "vae", "decode", "vae")
+    c.wire("decode", "image", "video", "images")
+    
+    return c.build()
+
+
+# ============================================================================
+# UNIFIED INTERFACE — Select OR Compose
+# ============================================================================
+
+class WorkflowFactory:
+    """Unified interface for getting workflows.
+    
+    Tries to SELECT from registry first, falls back to COMPOSE.
+    """
+    
+    def __init__(self, registry=None):
+        self.registry = registry
+    
+    def get_workflow(
+        self,
+        capability: str,
+        **params
     ) -> Dict[str, Any]:
+        """Get a workflow for a capability.
+        
+        First tries to find a pre-made workflow in the registry.
+        If not found, composes one from atomic tools.
         """
-        Main composition loop.
+        from .workflow_registry import WorkflowCapability
         
-        Args:
-            initial_workflow: Starting workflow
-            goal: What we're trying to achieve
+        cap = WorkflowCapability(capability)
         
-        Returns:
-            Final results with history
-        """
-        workflow = initial_workflow
-        self.history = []
+        # Try registry first
+        if self.registry:
+            workflows = self.registry.get_for_capability(cap)
+            if workflows:
+                # Use the first matching workflow
+                return workflows[0].parameterize(**params)
         
-        for iteration in range(self.config.max_iterations):
-            print(f"\n=== Iteration {iteration + 1}/{self.config.max_iterations} ===")
-            
-            # Execute workflow
-            print("Executing workflow...")
-            result = await self.execute_workflow(workflow)
-            
-            if "error" in result:
-                print(f"Error: {result['error']}")
-                break
-            
-            # Find and download output media (image or video)
-            media_path = None
-            media_type = "image"
-            for node_id, outputs in result.get("outputs", {}).items():
-                if "images" in outputs:
-                    for media_info in outputs["images"]:
-                        filename = media_info["filename"]
-                        media_path = await self.download_image(filename)
-                        # Detect if it's a video
-                        if filename.endswith(('.webp', '.gif', '.mp4', '.webm')):
-                            media_type = "video"
-                        break
-                # Also check for gifs output node
-                if "gifs" in outputs:
-                    for media_info in outputs["gifs"]:
-                        media_path = await self.download_image(media_info["filename"])
-                        media_type = "video"
-                        break
-            
-            if not media_path:
-                print("No output found")
-                break
-            
-            print(f"Generated ({media_type}): {media_path.name}")
-            
-            # Analyze with VLM - auto-detect media type
-            print(f"Analyzing {media_type} with Gemini VLM...")
-            analysis = self.analyze_media(media_path, goal)
-            
-            quality = analysis.get("quality_score", 0)
-            print(f"Quality: {quality}/10")
-            print(f"Description: {analysis.get('description', 'N/A')[:100]}...")
-            
-            # Record history
-            self.history.append({
-                "iteration": iteration + 1,
-                "media": str(media_path),
-                "media_type": media_type,
-                "analysis": analysis,
-                "workflow_snapshot": workflow
-            })
-            
-            # Check if we've reached quality threshold
-            if quality >= self.config.quality_threshold:
-                print(f"[OK] Quality threshold reached ({quality} >= {self.config.quality_threshold})")
-                break
-            
-            # Modify workflow for next iteration
-            if iteration < self.config.max_iterations - 1:
-                print("Modifying workflow based on feedback...")
-                workflow = self.modify_workflow(workflow, analysis)
-                
-                # Show what changed
-                improvements = analysis.get("prompt_improvements", [])
-                if improvements:
-                    print(f"  Adding to prompt: {', '.join(improvements[:3])}")
-        
-        return {
-            "final_media": str(media_path) if media_path else None,
-            "media_type": media_type,
-            "final_quality": analysis.get("quality_score", 0),
-            "iterations": len(self.history),
-            "history": self.history
-        }
-
-
-async def demo():
-    """Demo the workflow composer."""
-    
-    # Load API keys from environment or config
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if not gemini_key:
-        config_path = Path("C:/ComfyUI_windows_portable/ComfyUI/custom_nodes/ComfyUI-Gemini/config.json")
-        if config_path.exists():
-            with open(config_path) as f:
-                gemini_key = json.load(f).get("GEMINI_API_KEY")
-    
-    if not gemini_key:
-        print("No Gemini API key found!")
-        return
-    
-    # Perplexity key from environment
-    perplexity_key = os.environ.get("PERPLEXITY_API_KEY")
-    
-    config = ComposerConfig(
-        gemini_api_key=gemini_key,
-        perplexity_api_key=perplexity_key,
-        max_iterations=3,
-        quality_threshold=8.0,
-        output_dir=Path("./composed_outputs")
-    )
-    
-    # Simple test workflow
-    workflow = {
-        "1": {
-            "class_type": "CheckpointLoaderSimple",
-            "inputs": {"ckpt_name": "v1-5-pruned-emaonly.safetensors"}
-        },
-        "2": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "clip": ["1", 1],
-                "text": "a cyberpunk android in neon city"
-            }
-        },
-        "3": {
-            "class_type": "CLIPTextEncode",
-            "inputs": {
-                "clip": ["1", 1],
-                "text": "blurry, low quality, deformed"
-            }
-        },
-        "4": {
-            "class_type": "EmptyLatentImage",
-            "inputs": {"batch_size": 1, "height": 512, "width": 512}
-        },
-        "5": {
-            "class_type": "KSampler",
-            "inputs": {
-                "cfg": 7,
-                "denoise": 1,
-                "latent_image": ["4", 0],
-                "model": ["1", 0],
-                "negative": ["3", 0],
-                "positive": ["2", 0],
-                "sampler_name": "euler",
-                "scheduler": "normal",
-                "seed": 12345,
-                "steps": 15
-            }
-        },
-        "6": {
-            "class_type": "VAEDecode",
-            "inputs": {"samples": ["5", 0], "vae": ["1", 2]}
-        },
-        "7": {
-            "class_type": "SaveImage",
-            "inputs": {"filename_prefix": "composed", "images": ["6", 0]}
-        }
-    }
-    
-    async with WorkflowComposer(config) as composer:
-        print("=== WORKFLOW COMPOSER DEMO ===")
-        print("Goal: Generate a high-quality cyberpunk image")
-        print("Max iterations:", config.max_iterations)
-        print("Quality threshold:", config.quality_threshold)
-        
-        result = await composer.compose(
-            workflow, 
-            goal="Generate a detailed, high-quality cyberpunk android image"
-        )
-        
-        print("\n=== FINAL RESULTS ===")
-        print(f"Final image: {result['final_image']}")
-        print(f"Final quality: {result['final_quality']}/10")
-        print(f"Iterations: {result['iterations']}")
-        
-        # Show improvement history
-        print("\nImprovement History:")
-        for h in result["history"]:
-            score = h["analysis"].get("quality_score", "?")
-            improvements = h["analysis"].get("prompt_improvements", [])
-            print(f"  Iteration {h['iteration']}: {score}/10")
-            if improvements:
-                print(f"    -> Added: {', '.join(improvements[:2])}")
-
-
-if __name__ == "__main__":
-    asyncio.run(demo())
+        # Fall back to composition
+        if capability == "text_to_image":
+            return compose_txt2img(**params)
+        elif capability == "text_to_video":
+            return compose_wan_video(**params)
+        else:
+            raise ValueError(f"Cannot compose workflow for: {capability}")

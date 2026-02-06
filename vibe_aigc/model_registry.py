@@ -47,6 +47,7 @@ class ModelFamily(Enum):
     SD3 = "sd3"
     FLUX = "flux"
     LTX_VIDEO = "ltx_video"
+    WAN = "wan"  # Wan 2.1, 2.2, AniSora
     ANIMATEDIFF = "animatediff"
     HUNYUAN = "hunyuan"
     MOCHI = "mochi"
@@ -87,6 +88,12 @@ KNOWN_MODELS = {
         "family": ModelFamily.LTX_VIDEO,
         "capabilities": [ModelCapability.TEXT_TO_VIDEO, ModelCapability.IMAGE_TO_VIDEO],
         "patterns": ["ltxv", "ltx-video", "ltx_video"],
+    },
+    # Wan Video (2.1, 2.2, AniSora variants)
+    "wan": {
+        "family": ModelFamily.WAN,
+        "capabilities": [ModelCapability.TEXT_TO_VIDEO, ModelCapability.IMAGE_TO_VIDEO],
+        "patterns": ["wan2", "wan_2", "wanvideo", "anisora"],
     },
     # AnimateDiff
     "animatediff": {

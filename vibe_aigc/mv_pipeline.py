@@ -26,12 +26,14 @@ from .audio import MusicGenBackend, RiffusionBackend
 from .tools import LLMTool
 from .model_registry import ModelRegistry, ModelCapability
 from .vlm_feedback import VLMFeedback, create_vlm_feedback
+from .workflow_backend import WorkflowBackend, create_workflow_backend
 
 
 class VideoBackend(Enum):
     """Available video generation backends."""
     ANIMATEDIFF = "animatediff"
     LTX_VIDEO = "ltx_video"
+    WORKFLOW = "workflow"  # NEW: Use WorkflowRegistry/Composer
     AUTO = "auto"  # Let ModelRegistry decide
 
 
@@ -127,6 +129,12 @@ class MVPipeline:
         # VLM Feedback - analyzes outputs
         self.vlm_feedback = create_vlm_feedback() if enable_vlm_feedback else None
         
+        # Workflow Backend (NEW) - uses WorkflowRegistry/Composer
+        self.workflow_backend = create_workflow_backend(
+            comfyui_url=comfyui_url,
+            workflow_dirs=['./workflows', './vibe_aigc/workflows']
+        )
+        
         # Backends
         self.image_backend = ComfyUIBackend(self.comfyui_config)
         self.animatediff_backend = AnimateDiffBackend(self.comfyui_config)
@@ -142,12 +150,16 @@ class MVPipeline:
         self.music_backend = MusicGenBackend(music_api_token)
     
     async def initialize(self) -> None:
-        """Initialize the pipeline - scan available models."""
+        """Initialize the pipeline - scan available models and workflows."""
         await self.model_registry.refresh()
+        await self.workflow_backend.initialize()
         self._models_initialized = True
         
         # Log capabilities
         caps = self.model_registry.get_capabilities()
+        
+        # Log workflow status
+        print(self.workflow_backend.status())
         print(f"MV Pipeline initialized with capabilities: {[c.value for c in caps]}")
     
     async def generate_storyboard(
@@ -296,22 +308,47 @@ action shots, and emotional beats. Use the style consistently."""
                 steps=20
             )
         
-        # Select video backend based on available models
+        # Select video backend based on configuration
+        use_workflow = False
         use_ltx = False
-        if self.video_backend_type == VideoBackend.LTX_VIDEO:
+        
+        if self.video_backend_type == VideoBackend.WORKFLOW:
+            use_workflow = True
+        elif self.video_backend_type == VideoBackend.LTX_VIDEO:
             use_ltx = True
         elif self.video_backend_type == VideoBackend.AUTO and self._models_initialized:
-            # Check if LTX Video is available and better
-            ltx_model = self.model_registry.get_best_for(ModelCapability.TEXT_TO_VIDEO)
-            if ltx_model and "ltx" in ltx_model.filename.lower():
-                use_ltx = True
+            # Prefer workflow backend if workflows are available
+            if self.workflow_backend._discovered:
+                from .workflow_registry import WorkflowCapability
+                workflows = self.workflow_backend.registry.get_for_capability(
+                    WorkflowCapability.TEXT_TO_VIDEO
+                )
+                if workflows:
+                    use_workflow = True
+            
+            # Fallback to LTX if available
+            if not use_workflow:
+                ltx_model = self.model_registry.get_best_for(ModelCapability.TEXT_TO_VIDEO)
+                if ltx_model and "ltx" in ltx_model.filename.lower():
+                    use_ltx = True
         
         # Generate with selected backend
         max_attempts = 3 if (use_vlm_feedback and self.vlm_feedback) else 1
         current_prompt = shot.prompt
         
         for attempt in range(max_attempts):
-            if use_ltx:
+            if use_workflow:
+                # NEW: Use workflow backend (registry/composer)
+                result = await self.workflow_backend.generate_video(
+                    prompt=current_prompt,
+                    negative_prompt=shot.negative_prompt,
+                    frames=shot.frames,
+                    width=512,
+                    height=512,
+                    steps=6,
+                    cfg=6.0
+                )
+            elif use_ltx:
                 result = await self._generate_ltx_video(
                     prompt=current_prompt,
                     negative_prompt=shot.negative_prompt,
