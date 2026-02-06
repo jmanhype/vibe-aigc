@@ -188,16 +188,25 @@ class VibeBackend:
         
         # Compose from available nodes
         print(f"Composing workflow for {request.capability.value}...")
+        
+        # Build kwargs based on capability
+        kwargs = {
+            "negative_prompt": request.negative_prompt,
+            "width": request.width,
+            "height": request.height,
+            "steps": request.steps,
+            "cfg": request.cfg,
+            "seed": request.seed
+        }
+        
+        # Add frames only for video capabilities
+        if request.capability in [Capability.TEXT_TO_VIDEO, Capability.IMAGE_TO_VIDEO]:
+            kwargs["frames"] = request.frames
+        
         return self.composer.compose_for_capability(
             capability=request.capability,
             prompt=request.prompt,
-            negative_prompt=request.negative_prompt,
-            width=request.width,
-            height=request.height,
-            frames=request.frames,
-            steps=request.steps,
-            cfg=request.cfg,
-            seed=request.seed
+            **kwargs
         )
     
     async def _execute_with_feedback(
@@ -230,30 +239,57 @@ class VibeBackend:
                 return result
             
             # VLM feedback
-            if self.vlm and self.vlm.available and result.output_path:
-                feedback = self.vlm.analyze_media(
-                    Path(result.output_path), 
-                    current_prompt
-                )
+            if self.vlm and self.vlm.available and result.output_url:
+                # Download image for VLM analysis
+                try:
+                    import tempfile
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(result.output_url) as resp:
+                            if resp.status == 200:
+                                content = await resp.read()
+                                # Save to temp file
+                                suffix = '.png' if 'png' in result.output_url else '.webp'
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                                    f.write(content)
+                                    temp_path = f.name
+                                
+                                feedback = self.vlm.analyze_media(
+                                    Path(temp_path), 
+                                    current_prompt
+                                )
+                                
+                                # Clean up
+                                import os
+                                os.unlink(temp_path)
+                            else:
+                                feedback = None
+                except Exception as e:
+                    print(f"VLM feedback failed: {e}")
+                    feedback = None
                 
-                result.quality_score = feedback.quality_score
-                result.feedback = feedback.description
-                
-                if feedback.quality_score > best_score:
-                    best_score = feedback.quality_score
-                    best_result = result
-                
-                if feedback.quality_score >= self.quality_threshold:
-                    print(f"Quality threshold met: {feedback.quality_score}/10")
+                if feedback:
+                    result.quality_score = feedback.quality_score
+                    result.feedback = feedback.description
+                    
+                    if feedback.quality_score > best_score:
+                        best_score = feedback.quality_score
+                        best_result = result
+                    
+                    if feedback.quality_score >= self.quality_threshold:
+                        print(f"Quality threshold met: {feedback.quality_score}/10")
+                        result.attempts = attempt + 1
+                        return result
+                    
+                    # Refine prompt for next attempt
+                    if attempt < self.max_attempts - 1:
+                        current_prompt = self.vlm.suggest_improvements(feedback, current_prompt)
+                        print(f"Refined prompt: {current_prompt[:50]}...")
+                else:
+                    # VLM failed, return successful result
                     result.attempts = attempt + 1
                     return result
-                
-                # Refine prompt for next attempt
-                if attempt < self.max_attempts - 1:
-                    current_prompt = self.vlm.suggest_improvements(feedback, current_prompt)
-                    print(f"Refined prompt: {current_prompt[:50]}...")
             else:
-                # No VLM, return first successful result
+                # No VLM configured, return first successful result
                 result.attempts = attempt + 1
                 return result
         
