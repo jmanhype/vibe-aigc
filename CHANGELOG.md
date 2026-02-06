@@ -5,6 +5,41 @@ All notable changes to Vibe AIGC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-02-05
+
+### Added
+
+- **General, Constraint-Aware Architecture** (Paper Section 5.4)
+  - `discovery.py` - ComfyPilot-based system discovery (GPU, VRAM, nodes, models)
+  - `composer_general.py` - Composes workflows from DISCOVERED nodes
+  - `vibe_backend.py` - Unified backend with VLM feedback loop
+  - `workflow_registry.py` - Workflows as first-class tools (select or compose)
+  - `workflow_backend.py` - Unified workflow execution
+
+- **True Generality**
+  - No hardcoded model patterns — everything discovered from ComfyUI
+  - Constraint-aware matching — filters by user's VRAM
+  - CivitAI/HuggingFace API search — recommend models within constraints
+  - Works on ANY ComfyUI setup (4GB laptop to 24GB workstation)
+
+- **Workflow Templates**
+  - `workflows/` directory for saved workflow JSON files
+  - Workflows treated as atomic tools per paper Section 5.4
+  - Auto-parameterization (prompt, seed, resolution)
+
+### Changed
+
+- `ModelRegistry` now detects Wan 2.x video models
+- `MVPipeline` wired to new workflow backend
+- Refactored from hardcoded patterns to discovery-based architecture
+
+### Paper Alignment
+
+- "Traverses atomic tool library" → `discovery.py`
+- "Select optimal ensemble of components" → `workflow_registry.py`
+- "Define data-flow topology" → `composer_general.py`
+- "Adaptive reasoning for task complexity" → constraint-aware matching
+
 ## [0.2.0] - 2026-02-05
 
 ### Added
