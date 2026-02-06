@@ -118,25 +118,36 @@ class VLMFeedback:
         
         img = Image.open(image_path)
         
-        prompt = f"""You are an AI art director analyzing generated images.
+        prompt = f"""You are an expert AI art director analyzing AI-generated images for quality.
 
-Context: {context}
+Original prompt: {context}
 
-Analyze this image and respond in JSON format:
+IMPORTANT: You MUST provide specific, actionable prompt improvements.
+
+Analyze this image and respond ONLY with valid JSON (no markdown):
 {{
-    "quality_score": <1-10>,
-    "description": "<what you see>",
-    "strengths": ["<strength1>", "<strength2>"],
-    "weaknesses": ["<weakness1>", "<weakness2>"],
-    "prompt_improvements": ["<specific prompt addition>", ...],
+    "quality_score": <1-10 based on: composition, detail, prompt adherence, aesthetic quality>,
+    "description": "<brief description of what you see>",
+    "strengths": ["<specific strength 1>", "<specific strength 2>"],
+    "weaknesses": ["<specific weakness 1>", "<specific weakness 2>"],
+    "prompt_improvements": [
+        "<SPECIFIC phrase to ADD to prompt to fix weakness 1>",
+        "<SPECIFIC phrase to ADD to prompt to fix weakness 2>",
+        "<SPECIFIC quality modifier to add>"
+    ],
     "parameter_changes": {{
-        "cfg": <suggested cfg or null>,
-        "steps": <suggested steps or null>,
-        "sampler": "<suggested sampler or null>"
+        "cfg": <suggest higher/lower cfg if needed, or null>,
+        "steps": <suggest more/fewer steps if needed, or null>
     }}
 }}
 
-Be specific about what to ADD to the prompt to fix issues."""
+REQUIRED: prompt_improvements must have at least 2 specific suggestions like:
+- "add sharp focus" if blurry
+- "add dramatic shadows" if flat lighting
+- "add intricate details" if lacking detail
+- "add correct anatomy" if distorted
+
+Score guide: 1-3 poor, 4-5 mediocre, 6-7 good, 8-9 excellent, 10 perfect."""
 
         try:
             response = self.vlm.generate_content([prompt, img])

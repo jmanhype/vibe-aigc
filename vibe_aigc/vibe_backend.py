@@ -14,7 +14,7 @@ This works with ANY ComfyUI setup — no hardcoded models or patterns.
 import asyncio
 import aiohttp
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .discovery import (
@@ -51,6 +51,9 @@ class GenerationResult:
     output_path: Optional[str] = None
     quality_score: float = 0.0
     feedback: Optional[str] = None
+    strengths: List[str] = field(default_factory=list)
+    weaknesses: List[str] = field(default_factory=list)
+    prompt_improvements: List[str] = field(default_factory=list)
     error: Optional[str] = None
     workflow_used: Optional[str] = None
     model_used: Optional[str] = None
@@ -241,35 +244,43 @@ class VibeBackend:
             # VLM feedback
             if self.vlm and self.vlm.available and result.output_url:
                 # Download image for VLM analysis
+                feedback = None
+                temp_path = None
                 try:
                     import tempfile
+                    import os
                     async with aiohttp.ClientSession() as session:
                         async with session.get(result.output_url) as resp:
                             if resp.status == 200:
                                 content = await resp.read()
-                                # Save to temp file
+                                # Save to temp file (won't auto-delete)
                                 suffix = '.png' if 'png' in result.output_url else '.webp'
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-                                    f.write(content)
-                                    temp_path = f.name
+                                fd, temp_path = tempfile.mkstemp(suffix=suffix)
+                                os.write(fd, content)
+                                os.close(fd)
                                 
                                 feedback = self.vlm.analyze_media(
                                     Path(temp_path), 
                                     current_prompt
                                 )
-                                
-                                # Clean up
-                                import os
-                                os.unlink(temp_path)
-                            else:
-                                feedback = None
                 except Exception as e:
                     print(f"VLM feedback failed: {e}")
                     feedback = None
+                finally:
+                    # Clean up temp file (ignore errors on Windows)
+                    if temp_path:
+                        try:
+                            import os
+                            os.unlink(temp_path)
+                        except:
+                            pass  # Windows file locking, will be cleaned up by OS
                 
                 if feedback:
                     result.quality_score = feedback.quality_score
                     result.feedback = feedback.description
+                    result.strengths = feedback.strengths
+                    result.weaknesses = feedback.weaknesses
+                    result.prompt_improvements = feedback.prompt_improvements
                     
                     if feedback.quality_score > best_score:
                         best_score = feedback.quality_score

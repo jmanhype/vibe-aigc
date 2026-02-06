@@ -264,13 +264,17 @@ class FidelityBenchmark:
                     output_url=result.output_url or "",
                     quality_score=result.quality_score or 5.0,
                     feedback=result.feedback or "",
-                    strengths=[],  # Would need to parse from VLM response
-                    weaknesses=[],
+                    strengths=result.strengths or [],
+                    weaknesses=result.weaknesses or [],
                     attempt_number=result.attempts,
                     timestamp=datetime.now().isoformat()
                 )
                 scores.append(score)
                 print(f"  Score: {score.quality_score}/10 (attempt {score.attempt_number})")
+                if score.strengths:
+                    print(f"    Strengths: {', '.join(score.strengths[:2])}")
+                if score.weaknesses:
+                    print(f"    Weaknesses: {', '.join(score.weaknesses[:2])}")
             else:
                 print(f"  Failed: {result.error}")
         
