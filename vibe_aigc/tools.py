@@ -496,13 +496,25 @@ class ToolRegistry:
         return "\n".join(lines)
 
 
-def create_default_registry() -> ToolRegistry:
-    """Create a registry with default tools."""
+def create_default_registry(comfyui_url: str = "http://127.0.0.1:8188") -> ToolRegistry:
+    """Create a registry with default tools.
+    
+    Args:
+        comfyui_url: URL for ComfyUI server (for image/video generation)
+    """
     registry = ToolRegistry()
     
     # Register built-in tools
     registry.register(LLMTool(provider="openai"))
     registry.register(TemplateTool())
     registry.register(CombineTool())
+    
+    # Register ComfyUI-based generation tools (Paper Section 5.4)
+    try:
+        from .tools_comfyui import create_comfyui_tools
+        for tool in create_comfyui_tools(comfyui_url):
+            registry.register(tool)
+    except ImportError:
+        pass  # ComfyUI tools optional
     
     return registry
