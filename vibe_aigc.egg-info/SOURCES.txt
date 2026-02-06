@@ -16,6 +16,7 @@ tests/test_metaplanner_resume.py
 tests/test_metaplanner_visualization.py
 tests/test_models.py
 tests/test_parallel_execution.py
+tests/test_pipeline.py
 tests/test_planner.py
 tests/test_progress_callbacks.py
 tests/test_tools.py
@@ -38,10 +39,15 @@ vibe_aigc/model_registry.py
 vibe_aigc/models.py
 vibe_aigc/mv_pipeline.py
 vibe_aigc/persistence.py
+vibe_aigc/pipeline.py
 vibe_aigc/planner.py
 vibe_aigc/tools.py
+vibe_aigc/tools_audio.py
 vibe_aigc/tools_comfyui.py
 vibe_aigc/tools_multimodal.py
+vibe_aigc/tools_utility.py
+vibe_aigc/tools_video.py
+vibe_aigc/tools_vision.py
 vibe_aigc/vibe_backend.py
 vibe_aigc/video.py
 vibe_aigc/visualization.py

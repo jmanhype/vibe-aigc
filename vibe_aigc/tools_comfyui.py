@@ -232,8 +232,9 @@ class VideoGenerationTool(BaseTool):
     """
     Video generation tool using local ComfyUI.
     
-    Uses the I2V pipeline: FLUX → Wan I2V animation.
-    MetaPlanner can use this for motion content.
+    Supports two modes:
+    - With image_url: Uses I2V (Image-to-Video) to animate existing image
+    - Without image_url: Uses T2V (Text-to-Video) to generate from scratch
     """
     
     def __init__(self, comfyui_url: str = "http://127.0.0.1:8188"):
@@ -244,13 +245,14 @@ class VideoGenerationTool(BaseTool):
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="video_generation",
-            description="Generate videos using local AI models (FLUX + Wan I2V)",
+            description="Generate videos using local AI models. Pass image_url to animate an existing image (I2V), or just prompt for text-to-video.",
             category=ToolCategory.VIDEO,
             input_schema={
                 "type": "object",
                 "required": ["prompt"],
                 "properties": {
-                    "prompt": {"type": "string", "description": "Video description"},
+                    "prompt": {"type": "string", "description": "Video/motion description"},
+                    "image_url": {"type": "string", "description": "Source image URL to animate (enables I2V mode)"},
                     "negative_prompt": {"type": "string", "description": "What to avoid"},
                     "style": {"type": "string", "description": "Visual style hints"},
                     "motion": {"type": "string", "description": "Motion description"},
@@ -269,7 +271,7 @@ class VideoGenerationTool(BaseTool):
             },
             examples=[
                 {
-                    "input": {"prompt": "samurai walking through rain", "frames": 33},
+                    "input": {"prompt": "gentle breeze, swaying flowers", "image_url": "http://.../image.png"},
                     "output": {"video_url": "http://...", "duration_seconds": 2.0}
                 }
             ]
@@ -299,6 +301,7 @@ class VideoGenerationTool(BaseTool):
             prompt = inputs.get("prompt", "")
             style = inputs.get("style", "")
             motion = inputs.get("motion", "")
+            image_url = inputs.get("image_url")
             
             # Incorporate knowledge base hints
             if context and "technical_specs" in context:
@@ -316,15 +319,22 @@ class VideoGenerationTool(BaseTool):
             frames = inputs.get("frames", 33)
             fps = inputs.get("fps", 16)
             
+            # Choose capability based on whether we have a source image
+            if image_url:
+                capability = Capability.IMAGE_TO_VIDEO
+            else:
+                capability = Capability.TEXT_TO_VIDEO
+            
             result = await backend.generate(GenerationRequest(
                 prompt=prompt,
-                capability=Capability.TEXT_TO_VIDEO,
+                capability=capability,
                 negative_prompt=inputs.get("negative_prompt", ""),
                 width=inputs.get("width", 832),
                 height=inputs.get("height", 480),
                 frames=frames,
                 steps=20,
-                cfg=5.0
+                cfg=5.0,
+                image_url=image_url  # Pass source image for I2V
             ))
             
             if result.success:

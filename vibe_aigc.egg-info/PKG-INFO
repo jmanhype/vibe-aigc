@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: vibe-aigc
-Version: 0.6.3
+Version: 0.7.0
 Summary: A New Paradigm for Content Generation via Agentic Orchestration
 Author: Vibe AIGC Contributors
 License-Expression: MIT
@@ -104,6 +104,34 @@ result = kb.query("Hitchcockian suspense")
 - 💾 **Checkpoint/Resume** — Save and restore workflow state
 - 📊 **Progress Tracking** — Real-time callbacks and visualization
 - 🎨 **Workflow Visualization** — ASCII and Mermaid diagrams
+
+## LLM Providers
+
+Vibe AIGC supports multiple LLM backends with auto-detection:
+
+| Provider | API Key | Model Example |
+|----------|---------|---------------|
+| **OpenAI** | `OPENAI_API_KEY` | `gpt-4` |
+| **Anthropic** | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| **Ollama** | None (local) | `qwen2.5:14b` |
+
+```python
+from vibe_aigc import MetaPlanner, LLMConfig
+
+# Auto-detect (checks env vars, falls back to Ollama)
+planner = MetaPlanner()
+
+# Explicit Ollama (no API key needed!)
+config = LLMConfig.for_ollama(
+    host="http://localhost:11434",  # or your GPU server
+    model="qwen2.5:14b"
+)
+planner = MetaPlanner(llm_config=config)
+
+# Explicit OpenAI
+config = LLMConfig.for_openai(model="gpt-4o")
+planner = MetaPlanner(llm_config=config)
+```
 
 ## Installation
 

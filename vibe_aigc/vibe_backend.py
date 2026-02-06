@@ -41,6 +41,7 @@ class GenerationRequest:
     steps: int = 20
     cfg: float = 7.0
     seed: Optional[int] = None
+    image_url: Optional[str] = None  # Source image for I2V/img2img
 
 
 @dataclass
@@ -150,9 +151,17 @@ class VibeBackend:
             import random
             request.seed = random.randint(0, 2**32 - 1)
         
-        # Special handling for TEXT_TO_VIDEO: use I2V pipeline
+        # Special handling for video capabilities
         if request.capability == Capability.TEXT_TO_VIDEO:
             return await self._generate_video_via_i2v(request)
+        
+        # IMAGE_TO_VIDEO: animate a provided image
+        if request.capability == Capability.IMAGE_TO_VIDEO:
+            if request.image_url:
+                return await self._animate_image(request)
+            else:
+                # No image provided, fall back to T2V pipeline
+                return await self._generate_video_via_i2v(request)
         
         # Try to get workflow
         workflow = await self._get_workflow(request)
@@ -435,6 +444,54 @@ class VibeBackend:
         # Download image
         async with aiohttp.ClientSession() as session:
             async with session.get(image_result.output_url) as resp:
+                image_data = await resp.read()
+            
+            # Upload to ComfyUI
+            form = aiohttp.FormData()
+            form.add_field('image', image_data, filename='input.png', content_type='image/png')
+            
+            async with session.post(f"{self.url}/upload/image", data=form) as resp:
+                upload_result = await resp.json()
+                uploaded_name = upload_result.get("name", "input.png")
+                print(f"    Uploaded: {uploaded_name}")
+        
+        # Create I2V workflow
+        i2v_workflow = self._create_wan_i2v_workflow(
+            uploaded_image=uploaded_name,
+            prompt=request.prompt,
+            negative=request.negative_prompt,
+            width=request.width,
+            height=request.height,
+            frames=request.frames,
+            seed=request.seed
+        )
+        
+        video_result = await self._execute_workflow(i2v_workflow)
+        if not video_result.success:
+            return GenerationResult(
+                success=False,
+                error=f"Animation failed: {video_result.error}"
+            )
+        
+        print(f"    Video: {video_result.output_path}")
+        return video_result
+    
+    async def _animate_image(self, request: GenerationRequest) -> GenerationResult:
+        """Animate an existing image with I2V.
+        
+        Uses provided image_url instead of generating a new base image.
+        """
+        print(f"\n[I2V] Animating provided image...")
+        print(f"    Source: {request.image_url}")
+        
+        # Download the source image
+        async with aiohttp.ClientSession() as session:
+            async with session.get(request.image_url) as resp:
+                if resp.status != 200:
+                    return GenerationResult(
+                        success=False,
+                        error=f"Failed to download image: HTTP {resp.status}"
+                    )
                 image_data = await resp.read()
             
             # Upload to ComfyUI
